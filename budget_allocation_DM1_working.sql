@@ -171,7 +171,7 @@ Grant list, select on offer_incentive_final_allocations_union_all_dy_4 to pprcmm
 
 
 /*************************************************/
-/******Step 7: Budget Allocation******/
+/****************** Budget Allocation*************/
 /*************************************************/
 
 
@@ -317,7 +317,7 @@ Grant list, select on ty_rebate_summary_final to pprcmmrn01_usr_read;
 
 
 /*************************************************/
-/******Step ?:  Final assignment decisions********/
+/*************  Final assignment decisions********/
 /*************************************************/
 
 drop table final_custs_list_dm1;
@@ -336,4 +336,7 @@ select * from final_offer_assgmt_table_dm1
 --cohort
 select cohort,count(distinct cust_acct_key) from final_offer_assgmt_table_dm1 group by 1;
 --account_number and cust_acct_key
- 
+select count(distinct cust_acct_key) from final_offer_assgmt_table_dm1; --1941351
+select count(distinct account_number) from final_offer_assgmt_table_dm1; --1941351
+select cust_acct_key,count(distinct account_number) as cnt from final_offer_assgmt_table_dm1 group by 1 having cnt > 1;
+select account_number,count(distinct cust_acct_key) as cnt from final_offer_assgmt_table_dm1 group by 1 having cnt > 1;
