@@ -315,3 +315,25 @@ Grant list, select on ty_rebate_summary_final to pprcmmrn01_usr_read;
 
 
 
+
+/*************************************************/
+/******Step ?:  Final assignment decisions********/
+/*************************************************/
+
+drop table final_custs_list_dm1;
+create table final_custs_list_dm1 as
+select * from priority_custs_list_dm1_final where priority_custs in (1,2,3,4,5,6,7);  --1,941,351 customers
+
+drop table final_offer_assgmt_table_dm1;
+create table final_offer_assgmt_table_dm1 as
+select * from offer_incentive_final_allocations_union_all_dy_4 where cust_acct_key in (select distinct cust_acct_key from final_custs_list_dm1);
+
+
+select count(distinct cust_acct_key) from final_offer_assgmt_table_dm1;
+select cust_acct_key, count(*) as cnt from final_offer_assgmt_table_dm1 group by 1 having cnt !=8;
+
+select * from final_offer_assgmt_table_dm1
+--cohort
+select cohort,count(distinct cust_acct_key) from final_offer_assgmt_table_dm1 group by 1;
+--account_number and cust_acct_key
+ 
