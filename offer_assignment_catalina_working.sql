@@ -469,8 +469,8 @@ select priority_custs,cust_category,type,
 case when type='vendor' then 0 when type='product' then 0.7 when type='ofb' then 0.7 else 1 end as resp_rate,
 count(distinct account_number) as custs,
 sum(offers) as offers,
-sum(rebate) as total_rebate,
-total_rebate*resp_rate as cost_redemption
+sum(rebate) as total_rebate
+--,total_rebate*resp_rate as cost_redemption
 from
 (select priority_custs,cust_category,account_number,type,count(distinct precima_ofb_id) as offers,sum(inc_bound_final) as rebate  
 from offer_incentive_final_allocations_catalina_non_mail_2 
@@ -478,5 +478,60 @@ where mail_opt_in_ind <> 0
 group by 1,2,3,4)
 group by 1,2,3,4
 
+----------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------
 
-/**/
+/*priority groups for ALL catalina customers*/
+select distinct cust_acct_key from offer_incentive_final_allocations_catalina_3 --all 4,426,681
+
+select distinct cust_acct_key from priority_custs_list_dm1_final  --mail customers 3,703,441
+select distinct cust_acct_key from priority_custs_list_catalina  --non mail customers 1006819
+
+
+create table catalina_dm1_both_custs as 
+select distinct cust_acct_key from offer_incentive_final_allocations_catalina_3
+intersect 
+select distinct cust_acct_key from priority_custs_list_dm1_final;  --3,284,716
+
+
+create table catalina_dm1_both_priority as
+select b.* from catalina_dm1_both_custs a, priority_custs_list_dm1_final b where a.cust_acct_key=b.cust_acct_key;
+
+select priority_custs,cust_category,count(*) as cnt from catalina_dm1_both_priority group by 1,2;
+
+--catalina part budget breakdown
+select priority_custs,cust_category,type,
+case when type='vendor' then 0 when type='product' then 0.7 when type='ofb' then 0.7 else 1 end as resp_rate,
+count(distinct account_number) as custs,
+sum(offers) as offers,
+sum(rebate) as total_rebate
+--,total_rebate*resp_rate as cost_redemption
+from
+(select priority_custs,cust_category,account_number,type,count(distinct precima_ofb_id) as offers,sum(inc_bound_final) as rebate  
+from (select a.*,b.priority_custs,b.cust_category from 
+		offer_incentive_final_allocations_catalina_3 a
+		join
+		catalina_dm1_both_priority b
+		on a.cust_acct_key=b.cust_acct_key
+		)a 
+group by 1,2,3,4)a
+group by 1,2,3,4 order by 1,3;
+
+
+--DM1 part budget breakdown
+select priority_custs,cust_category,type,
+case when type='vendor' then 0 when type='product' then 0.7 when type='ofb' then 0.7 else 1 end as resp_rate,
+count(distinct account_number) as custs,
+sum(offers) as offers,
+sum(rebate) as total_rebate
+--,total_rebate*resp_rate as cost_redemption
+from
+(select priority_custs,cust_category,account_number,type,count(distinct precima_ofb_id) as offers,sum(inc_bound_final) as rebate  
+from (select a.*,b.priority_custs,b.cust_category from 
+		offer_incentive_final_allocations_union_all_dy_4_mail a
+		join
+		catalina_dm1_both_priority b
+		on a.cust_acct_key=b.cust_acct_key
+		)a 
+group by 1,2,3,4)a
+group by 1,2,3,4 order by 1,3;
