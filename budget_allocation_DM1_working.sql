@@ -110,20 +110,32 @@ Grant list, select on dy_garcia_acct_ofb_inc_optimal to pprcmmrn01_usr_read ;
 
 drop table offer_incentive_final_allocations_union_all_dy_1;
 create temp table offer_incentive_final_allocations_union_all_dy_1 as
-select a.*, b.incentive_1,b.incentive_2,b.incentive_3,b.pe,b.avg_amt
+select a.*, round(b.incentive_1,2) as incentive_1,round(b.incentive_2,2) as incentive_2, round(b.incentive_3,2) as incentive_3,b.pe,b.avg_amt
 from offer_incentive_final_allocations_union_all_dy a
 left join (select acct_id, ofb_id, pe, avg_amt, incentive_1,incentive_2,incentive_3 from dy_garcia_acct_ofb_inc_optimal group by 1,2,3,4,5,6,7) b
 on a.acct_id=b.acct_id and a.precima_ofb_id=b.ofb_id;
 
 drop table offer_incentive_final_allocations_union_all_dy_2;
 create temp table offer_incentive_final_allocations_union_all_dy_2 as
-select *, 
+select *,
 case when incentive_tmp <= incentive_min then incentive_min when incentive_tmp >= incentive_max then incentive_max when incentive_tmp is null then incentive_min else incentive_tmp end as inc_adjusted,
-case when round(inc_adjusted,2) != round(incentive_min,2) and round(inc_adjusted,2) != round(incentive_1,2) and round(inc_adjusted,2) != round(incentive_2,2) and round(inc_adjusted,2) != round(incentive_3,2) and round(inc_adjusted,2) != round(incentive_max,2) then (inc_adjusted - 0.05) end as inc_lower,
-inc_lower + 0.1 as inc_upper,
+case when
+(inc_adjusted != incentive_min and inc_adjusted!= incentive_1 and inc_adjusted!= incentive_2  and inc_adjusted != incentive_max )
+-- and inc_adjusted != incentive_3 and inc_adjusted!= incentive_2  ) 
+then (inc_adjusted - 0.05) end as inc_lower, inc_lower + 0.1 as inc_upper,
 case when pe between -6 and -1 then inc_upper when pe between -1 and -0.5 then inc_lower end as inc_bound_adjusted,
 case when inc_bound_adjusted is null then inc_adjusted else inc_bound_adjusted end as inc_bound_temp
-from  offer_incentive_final_allocations_union_all_dy_1; 
+from  offer_incentive_final_allocations_union_all_dy_1 where incentive_3 is null
+union
+select *,
+case when incentive_tmp <= incentive_min then incentive_min when incentive_tmp >= incentive_max then incentive_max when incentive_tmp is null then incentive_min else incentive_tmp end as inc_adjusted,
+case when
+(inc_adjusted != incentive_min and inc_adjusted!= incentive_1 and inc_adjusted!= incentive_2 and inc_adjusted != incentive_3 and inc_adjusted != incentive_max )
+--  and inc_adjusted!= incentive_2  ) 
+then (inc_adjusted - 0.05) end as inc_lower, inc_lower + 0.1 as inc_upper,
+case when pe between -6 and -1 then inc_upper when pe between -1 and -0.5 then inc_lower end as inc_bound_adjusted,
+case when inc_bound_adjusted is null then inc_adjusted else inc_bound_adjusted end as inc_bound_temp
+from  offer_incentive_final_allocations_union_all_dy_1 where incentive_3 is not null; 
 
 
 drop table offer_incentive_final_allocations_union_all_dy_3;
@@ -165,7 +177,7 @@ on a.acct_id=b.acct_id and a.precima_ofb_id=b.ofb_id)a
 --NOTICE: A total of of 3576 NULL incentive_final
 --select count(*) from offer_incentive_final_allocations_union_all_dy where incentive_final is null
 
-Grant list, select on offer_incentive_final_allocations_union_all_dy_4 to pprcmmrn01_usr_read ;
+Grant list, select on offer_incentive_final_allocations_union_all_dy_4 to pprcmmrn01_usr_read;
 
 
 
@@ -181,6 +193,8 @@ Grant list, select on offer_incentive_final_allocations_union_all_dy_4 to pprcmm
 drop table offer_incentive_final_allocations_union_all_dy_4_mail; --3,703,441
 create table offer_incentive_final_allocations_union_all_dy_4_mail as
 select * from offer_incentive_final_allocations_union_all_dy_4 where mail_opt_in_ind<>0;
+
+Grant list, select on offer_incentive_final_allocations_union_all_dy_4_mail to pprcmmrn01_usr_read ;
 
 
 --vendor customer offer assgmt
@@ -326,13 +340,20 @@ select * from priority_custs_list_dm1_final where priority_custs in (1,2,3,4,5,6
 
 drop table final_offer_assgmt_table_dm1;
 create table final_offer_assgmt_table_dm1 as
-select * from offer_incentive_final_allocations_union_all_dy_4 where cust_acct_key in (select distinct cust_acct_key from final_custs_list_dm1);
+select *, case when incentive_type='Points' then round((inc_bound_final * 1000),0) else round(inc_bound_final,2) end as incentive_print
+from
+(select b.priority_custs,b.cust_category,a.*,c.incentive_type from 
+offer_incentive_final_allocations_union_all_dy_4 a,
+final_custs_list_dm1 b,
+msn_campaign_offer_bank_ty_incentive c
+where 
+a.cust_acct_key=b.cust_acct_key
+and
+a.precima_ofb_id=c.precima_ofb_id)a;
 
-
+--QA
 select count(distinct cust_acct_key) from final_offer_assgmt_table_dm1;
 select cust_acct_key, count(*) as cnt from final_offer_assgmt_table_dm1 group by 1 having cnt !=8;
-
-select * from final_offer_assgmt_table_dm1
 --cohort
 select cohort,count(distinct cust_acct_key) from final_offer_assgmt_table_dm1 group by 1;
 --account_number and cust_acct_key
@@ -340,3 +361,34 @@ select count(distinct cust_acct_key) from final_offer_assgmt_table_dm1; --194135
 select count(distinct account_number) from final_offer_assgmt_table_dm1; --1941351
 select cust_acct_key,count(distinct account_number) as cnt from final_offer_assgmt_table_dm1 group by 1 having cnt > 1;
 select account_number,count(distinct cust_acct_key) as cnt from final_offer_assgmt_table_dm1 group by 1 having cnt > 1;
+--check null columns
+select * from final_offer_assgmt_table_dm1 where inc_bound_final is null
+--check priority groups
+select priority_custs,cust_category,count(distinct cust_acct_key) as cnt from final_offer_assgmt_table_dm1 group by 1,2;
+--priority_custs	cust_category	cnt
+--1					vendor		537390
+--2					sample		306161
+--3					HH			123917
+--4					HM			224676
+--5					HL			157071
+--6					MH			207709
+--7					MM			384427
+
+--check different offer types
+select distinct type from final_offer_assgmt_table_dm1;
+select distinct type, priority from final_offer_assgmt_table_dm1;
+select distinct precimaofferid from final_offer_assgmt_table_dm1 where type='product';
+
+--check incentive range and incentive type
+select * from final_offer_assgmt_table_dm1 where incentive_print > incentive_max or incentive_print < incentive_min;
+select distinct incentive_type from final_offer_assgmt_table_dm1 where precima_ofb_id in ('MOR-62','MOR-89','MOR-26','MOR-86','MOR-11','MOR-67');
+select distinct incentive_print from final_offer_assgmt_table_dm1 where precima_ofb_id in ('MOR-62','MOR-89','MOR-26','MOR-86','MOR-11','MOR-67');
+
+--cheeck super group rules
+select acct_id,item1,count(*) as cnt from final_offer_assgmt_table_dm1 group by 1,2 having cnt >1;
+select acct_id,precima_ofb_id,count(*) as cnt from final_offer_assgmt_table_dm1 group by 1,2 having cnt >1;
+select acct_id,offer_bank_group_code, count(*) as cnt from final_offer_assgmt_table_dm1 group by 1,2 having cnt >1;
+select acct_id,offer_bank_supergroup_code, count(*) as cnt from final_offer_assgmt_table_dm1 group by 1,2 having cnt >2;
+
+--random check
+select *  from final_offer_assgmt_table_dm1 where cust_acct_key =178904 and item1 in ('247','2');
