@@ -136,7 +136,7 @@ case when
 -- and inc_adjusted != incentive_3 and inc_adjusted!= incentive_2  ) 
 then (inc_adjusted - 0.05) end as inc_lower, inc_lower + 0.1 as inc_upper,
 case when pe between -6 and -1 then inc_upper when pe between -1 and -0.5 then inc_lower end as inc_bound_adjusted,
-case when inc_bound_adjusted is null then inc_adjusted else inc_bound_adjusted end as inc_bound_temp
+case when inc_bound_adjusted is null then inc_adjusted else inc_bound_adjusted end as inc_bound_final
 from  offer_incentive_final_allocations_union_all_dy_1 where incentive_3 is null
 union
 select *,
@@ -146,7 +146,7 @@ case when
 --  and inc_adjusted!= incentive_2  ) 
 then (inc_adjusted - 0.05) end as inc_lower, inc_lower + 0.1 as inc_upper,
 case when pe between -6 and -1 then inc_upper when pe between -1 and -0.5 then inc_lower end as inc_bound_adjusted,
-case when inc_bound_adjusted is null then inc_adjusted else inc_bound_adjusted end as inc_bound_temp
+case when inc_bound_adjusted is null then inc_adjusted else inc_bound_adjusted end as inc_bound_final
 from  offer_incentive_final_allocations_union_all_dy_1 where incentive_3 is not null; 
 
 
@@ -275,13 +275,12 @@ select priority_custs,cust_category,type,
 case when type='vendor' then 0 when type='product' then 0.7 when type='ofb' then 0.7 else 1 end as resp_rate,
 count(distinct account_number) as custs,
 sum(offers) as offers,
-sum(rebate) as total_rebate,
-total_rebate*resp_rate as cost_redemption
+sum(rebate) as total_rebate
 from
 (select priority_custs,cust_category,account_number,type,count(distinct precima_ofb_id) as offers,sum(inc_bound_final) as rebate  
 from offer_incentive_final_allocations_union_all_dy_3_mail_2 
 group by 1,2,3,4)a
-group by 1,2,3,4
+group by 1,2,3,4 order by 1,3;
 
 
 -------------SUMMARY
@@ -342,18 +341,19 @@ a.cust_acct_key=b.cust_acct_key
 and
 a.precima_ofb_id=c.precima_ofb_id)a;
 
+
 --QA
 select count(distinct cust_acct_key) from final_offer_assgmt_table_dm1;
 select cust_acct_key, count(*) as cnt from final_offer_assgmt_table_dm1 group by 1 having cnt !=8;
 --cohort
 select cohort,count(distinct cust_acct_key) from final_offer_assgmt_table_dm1 group by 1;
 --account_number and cust_acct_key
-select count(distinct cust_acct_key) from final_offer_assgmt_table_dm1; --1941351
-select count(distinct account_number) from final_offer_assgmt_table_dm1; --1941351
+select count(distinct cust_acct_key) from final_offer_assgmt_table_dm1; --2651267
+select count(distinct account_number) from final_offer_assgmt_table_dm1; --2651267
 select cust_acct_key,count(distinct account_number) as cnt from final_offer_assgmt_table_dm1 group by 1 having cnt > 1;
 select account_number,count(distinct cust_acct_key) as cnt from final_offer_assgmt_table_dm1 group by 1 having cnt > 1;
 --check null columns
-select * from final_offer_assgmt_table_dm1 where inc_bound_final is null
+select * from final_offer_assgmt_table_dm1 where inc_bound_final is null;
 --check priority groups
 select priority_custs,cust_category,count(distinct cust_acct_key) as cnt from final_offer_assgmt_table_dm1 group by 1,2;
 --priority_custs	cust_category	cnt
@@ -364,6 +364,8 @@ select priority_custs,cust_category,count(distinct cust_acct_key) as cnt from fi
 --5					HL			157071
 --6					MH			207709
 --7					MM			384427
+--8					ML			262423
+--9					LH			447493
 
 --check different offer types
 select distinct type from final_offer_assgmt_table_dm1;
@@ -372,6 +374,8 @@ select distinct precimaofferid from final_offer_assgmt_table_dm1 where type='pro
 
 --check incentive range and incentive type
 select * from final_offer_assgmt_table_dm1 where incentive_print > incentive_max or incentive_print < incentive_min;
+select * from final_offer_assgmt_table_dm1 where inc_bound_final > inc_max_tmp or incentive_print < inc_min_tmp;
+
 select distinct incentive_type from final_offer_assgmt_table_dm1 where precima_ofb_id in ('MOR-62','MOR-89','MOR-26','MOR-86','MOR-11','MOR-67');
 select distinct incentive_print from final_offer_assgmt_table_dm1 where precima_ofb_id in ('MOR-62','MOR-89','MOR-26','MOR-86','MOR-11','MOR-67');
 
