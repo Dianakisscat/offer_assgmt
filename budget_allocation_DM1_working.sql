@@ -318,9 +318,17 @@ Grant list, select on ty_rebate_summary_final to pprcmmrn01_usr_read;
 
 
 
+
+
+
+
+
+
+
 /*************************************************/
 /*************  Final assignment decisions********/
 /*************************************************/
+
 
 drop table final_custs_list_dm1;
 create table final_custs_list_dm1 as
@@ -340,6 +348,73 @@ where
 a.cust_acct_key=b.cust_acct_key
 and
 a.precima_ofb_id=c.precima_ofb_id)a;
+
+
+
+/*************************************************/
+/******************Window Placement***************/
+/*************************************************/
+
+drop table vendor_cnt;
+create temp table vendor_cnt as
+select a.*, case when vendor_cnt is not null then vendor_cnt else 0 end as vendor_cnt 
+from 
+(select *, row_number()over(partition by cust_acct_key, type order by v10 desc) as type_rank from final_offer_assgmt_table_dm1) a
+left join
+(select cust_acct_key, count(*) as vendor_cnt from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='vendor' group by 1)b
+on a.cust_acct_key=b.cust_acct_key;
+
+
+
+drop table final_offer_assgmt_window_dm1;
+create temp table final_offer_assgmt_window_dm1 as
+select *, case
+when type='vendor' and type_rank = 1 then 1
+when type='vendor' and type_rank = 2 then 2
+when type='vendor' and type_rank = 3 then 2
+when type='vendor' and type_rank = 4 then 2
+when type='ofb' and type_rank = 1 then 1
+when type='ofb' and type_rank = 2 and vendor_cnt=0 then 1 
+when type='ofb' and type_rank = 2 and vendor_cnt in (1,2,3) then 2
+when type='ofb' and type_rank = 2 and vendor_cnt = 4 then 3
+when type='ofb' and type_rank = 3 and vendor_cnt in (0,1,2) then 2 
+when type='ofb' and type_rank = 3 and vendor_cnt in (3,4) then 3
+when type='ofb' and type_rank = 4 and vendor_cnt in (0,1) then 2 
+when type='ofb' and type_rank = 4 and vendor_cnt in (2,3) then 3
+when type='ofb' and type_rank = 5 and vendor_cnt = 0 then 2
+when type='ofb' and type_rank = 5 and vendor_cnt in (1,2) then 3
+when type='product' then 3 else 3 end as window,
+case
+when window=1 then '10/31/2016' 
+when window=2 then '11/21/2016'
+when window=3 then '12/12/2016' end as BARCODE_START_DATE,
+case
+when window=1 then '11/20/2016'
+when window=2 then '12/11/2016'
+when window=3 then '1/1/2017' end as BARCODE_END_DATE
+from vendor_cnt;
+
+
+
+
+
+
+drop table qa_final_offer_assgmt_table_dm1;
+create table qa_final_offer_assgmt_table_dm1 as 
+select 
+priority_custs,cust_category,cust_acct_key,acct_id,type,precimavendorid,precimaofferid,
+precima_ofb_id,offer_bank_group_code,offer_bank_supergroup_code,
+window,channel,incentive_print,incentive_type
+from final_offer_assgmt_window_dm1
+where cust_acct_key in (select cust_acct_key from mrsn_sbo_assignment_2016Xmas_neox where basket_offer_type!='non-collector')
+;
+
+Grant list, select on qa_final_offer_assgmt_table_dm1 to pprcmmrn01_usr_read;
+
+
+
+
+
 
 
 --QA
@@ -379,11 +454,30 @@ select * from final_offer_assgmt_table_dm1 where inc_bound_final > inc_max_tmp o
 select distinct incentive_type from final_offer_assgmt_table_dm1 where precima_ofb_id in ('MOR-62','MOR-89','MOR-26','MOR-86','MOR-11','MOR-67');
 select distinct incentive_print from final_offer_assgmt_table_dm1 where precima_ofb_id in ('MOR-62','MOR-89','MOR-26','MOR-86','MOR-11','MOR-67');
 
+select distinct incentive_print from final_offer_assgmt_table_dm1;
+
 --cheeck super group rules
 select acct_id,item1,count(*) as cnt from final_offer_assgmt_table_dm1 group by 1,2 having cnt >1;
 select acct_id,precima_ofb_id,count(*) as cnt from final_offer_assgmt_table_dm1 group by 1,2 having cnt >1;
 select acct_id,offer_bank_group_code, count(*) as cnt from final_offer_assgmt_table_dm1 group by 1,2 having cnt >1;
 select acct_id,offer_bank_supergroup_code, count(*) as cnt from final_offer_assgmt_table_dm1 group by 1,2 having cnt >2;
 
+
 --random check
 select *  from final_offer_assgmt_table_dm1 where cust_acct_key =178904 and item1 in ('247','2');
+
+
+--general stats
+
+select priority_custs,cust_category,count(distinct cust_acct_key) from final_offer_assgmt_table_dm1 group by 1,2;
+--priority_custs	cust_category	count
+--1	vendor	537390
+--2	sample	306161
+--3	HH	123917
+--4	HM	224676
+--5	HL	157071
+--6	MH	207709
+--7	MM	384427
+--8	ML	262423
+--9	LH	447493
+
