@@ -106,21 +106,33 @@ and a.ofb_id=b.ofb_id);
 Grant list, select on dy_garcia_acct_ofb_inc_optimal to pprcmmrn01_usr_read ;
 */
 
+-------------------------------------------------------------------------------
+--change point based incentive_max and min to pound based
+drop table offer_incentive_final_allocations_union_all_dy_0;
+create temp table offer_incentive_final_allocations_union_all_dy_0 as
+select *, case when precima_ofb_id in  ('MOR-62','MOR-89','MOR-26','MOR-86','MOR-11','MOR-67') then incentive_max/1000 else incentive_max end as inc_max_tmp,
+case when precima_ofb_id in  ('MOR-62','MOR-89','MOR-26','MOR-86','MOR-11','MOR-67') then incentive_min/1000 else incentive_min end as inc_min_tmp
+from offer_incentive_final_allocations_union_all_dy;
+-------------------------------------------------------------------------------
+
+
 /*first column: adjusted incentive rate*/
 
 drop table offer_incentive_final_allocations_union_all_dy_1;
 create temp table offer_incentive_final_allocations_union_all_dy_1 as
 select a.*, round(b.incentive_1,2) as incentive_1,round(b.incentive_2,2) as incentive_2, round(b.incentive_3,2) as incentive_3,b.pe,b.avg_amt
-from offer_incentive_final_allocations_union_all_dy a
+from offer_incentive_final_allocations_union_all_dy_0 a
 left join (select acct_id, ofb_id, pe, avg_amt, incentive_1,incentive_2,incentive_3 from dy_garcia_acct_ofb_inc_optimal group by 1,2,3,4,5,6,7) b
 on a.acct_id=b.acct_id and a.precima_ofb_id=b.ofb_id;
+
+
 
 drop table offer_incentive_final_allocations_union_all_dy_2;
 create temp table offer_incentive_final_allocations_union_all_dy_2 as
 select *,
-case when incentive_tmp <= incentive_min then incentive_min when incentive_tmp >= incentive_max then incentive_max when incentive_tmp is null then incentive_min else incentive_tmp end as inc_adjusted,
+case when incentive_tmp <= inc_min_tmp then inc_min_tmp when incentive_tmp >= inc_max_tmp then inc_max_tmp when incentive_tmp is null then inc_min_tmp else incentive_tmp end as inc_adjusted,
 case when
-(inc_adjusted != incentive_min and inc_adjusted!= incentive_1 and inc_adjusted!= incentive_2  and inc_adjusted != incentive_max )
+(inc_adjusted != inc_min_tmp and inc_adjusted!= incentive_1 and inc_adjusted!= incentive_2  and inc_adjusted != inc_max_tmp )
 -- and inc_adjusted != incentive_3 and inc_adjusted!= incentive_2  ) 
 then (inc_adjusted - 0.05) end as inc_lower, inc_lower + 0.1 as inc_upper,
 case when pe between -6 and -1 then inc_upper when pe between -1 and -0.5 then inc_lower end as inc_bound_adjusted,
@@ -128,9 +140,9 @@ case when inc_bound_adjusted is null then inc_adjusted else inc_bound_adjusted e
 from  offer_incentive_final_allocations_union_all_dy_1 where incentive_3 is null
 union
 select *,
-case when incentive_tmp <= incentive_min then incentive_min when incentive_tmp >= incentive_max then incentive_max when incentive_tmp is null then incentive_min else incentive_tmp end as inc_adjusted,
+case when incentive_tmp <= inc_min_tmp then inc_min_tmp when incentive_tmp >= inc_max_tmp then inc_max_tmp when incentive_tmp is null then inc_min_tmp else incentive_tmp end as inc_adjusted,
 case when
-(inc_adjusted != incentive_min and inc_adjusted!= incentive_1 and inc_adjusted!= incentive_2 and inc_adjusted != incentive_3 and inc_adjusted != incentive_max )
+(inc_adjusted != inc_min_tmp and inc_adjusted!= incentive_1 and inc_adjusted!= incentive_2 and inc_adjusted != incentive_3 and inc_adjusted != inc_max_tmp )
 --  and inc_adjusted!= incentive_2  ) 
 then (inc_adjusted - 0.05) end as inc_lower, inc_lower + 0.1 as inc_upper,
 case when pe between -6 and -1 then inc_upper when pe between -1 and -0.5 then inc_lower end as inc_bound_adjusted,
@@ -138,47 +150,24 @@ case when inc_bound_adjusted is null then inc_adjusted else inc_bound_adjusted e
 from  offer_incentive_final_allocations_union_all_dy_1 where incentive_3 is not null; 
 
 
-drop table offer_incentive_final_allocations_union_all_dy_3;
-create temp table offer_incentive_final_allocations_union_all_dy_3 as
-select *, 
-case when precima_ofb_id in  ('MOR-62','MOR-89','MOR-26','MOR-86','MOR-11','MOR-67') then inc_bound_temp/1000 else inc_bound_temp end as inc_bound_final 
-from
-(
-select cohort,account_number,cust_acct_key,acct_id,item1,v10,rank,purch_flag,precima_ofb_id,offer_bank_group_code,offer_bank_supergroup_code,type,precimavendorid,precimaofferid,priority,channel,email_opt_in_ind,mail_opt_in_ind,phone_opt_in_ind,sms_opt_in_ind,incentive_tmp,avg_ofb_txns,disc_cap_n_collared,incentive_min,incentive_max,incentive_incrementals,incentive_final,inc_bound_temp
-from offer_incentive_final_allocations_union_all_dy_2 where type='ofb'
-union
-select *, incentive_final as inc_bound_temp from offer_incentive_final_allocations_union_all_dy where type='vendor'
-union
-select *, incentive_final as inc_bound_temp from offer_incentive_final_allocations_union_all_dy where type='product'
-)a;
-
-
 /*second column: purely optimal rate based on PE*/
 
---NOTICE: THERE ARE 1124256 RECORDS WITH null inc_optimal BECAUSE CANNOT FIND THEM IN THE LOOKUP TABLE
---for the purpose of calculation, using incentive_min as replacement; 
-
-drop table offer_incentive_final_allocations_union_all_dy_4;
-create table offer_incentive_final_allocations_union_all_dy_4 as
+drop table offer_incentive_final_allocations_union_all_dy_3;
+create table offer_incentive_final_allocations_union_all_dy_3 as
 select *,
-case when inc_optimal is null then incentive_min else inc_optimal end as inc_optimal_final
+case when inc_optimal is null then inc_min_tmp else inc_optimal end as inc_optimal_final
 from (
-select *, 
-case when precima_ofb_id in  ('MOR-62','MOR-89','MOR-26','MOR-86','MOR-11','MOR-67') then inc_optimal_temp/1000 else inc_optimal_temp end as inc_optimal
-from 
-(	
-select a.*, b.inc_optimal as inc_optimal_temp from 
-offer_incentive_final_allocations_union_all_dy_3 a
+select a.*, b.inc_optimal from 
+offer_incentive_final_allocations_union_all_dy_2 a
 left join
 dy_garcia_acct_ofb_inc_optimal b
 on a.acct_id=b.acct_id and a.precima_ofb_id=b.ofb_id)a
-)a;
+;
 
 --NOTICE: A total of of 3576 NULL incentive_final
 --select count(*) from offer_incentive_final_allocations_union_all_dy where incentive_final is null
 
-Grant list, select on offer_incentive_final_allocations_union_all_dy_4 to pprcmmrn01_usr_read;
-
+Grant list, select on offer_incentive_final_allocations_union_all_dy_3 to pprcmmrn01_usr_read;
 
 
 
@@ -190,26 +179,26 @@ Grant list, select on offer_incentive_final_allocations_union_all_dy_4 to pprcmm
 
 --all_custs_part7_priority  3514452 customers in total, using Neo's old table
 
-drop table offer_incentive_final_allocations_union_all_dy_4_mail; --3,703,441
-create table offer_incentive_final_allocations_union_all_dy_4_mail as
-select * from offer_incentive_final_allocations_union_all_dy_4 where mail_opt_in_ind<>0;
+drop table offer_incentive_final_allocations_union_all_dy_3_mail; --3,703,441
+create table offer_incentive_final_allocations_union_all_dy_3_mail as
+select * from offer_incentive_final_allocations_union_all_dy_3 where mail_opt_in_ind<>0;
 
-Grant list, select on offer_incentive_final_allocations_union_all_dy_4_mail to pprcmmrn01_usr_read ;
+Grant list, select on offer_incentive_final_allocations_union_all_dy_3_mail to pprcmmrn01_usr_read ;
 
 
 --vendor customer offer assgmt
 drop table Vendor_custs_part1;  --537,390
 create temp table Vendor_custs_part1 as
 select * from
-offer_incentive_final_allocations_union_all_dy_4_mail 
-where cust_acct_key in (select cust_acct_key from offer_incentive_final_allocations_union_all_dy_4_mail where type='vendor');
+offer_incentive_final_allocations_union_all_dy_3_mail 
+where cust_acct_key in (select cust_acct_key from offer_incentive_final_allocations_union_all_dy_3_mail where type='vendor');
 
 
 -- sampling universe: non vendor customers, without null potential spend customers
 
 drop table sampling_universe_tmp;  --3,166,051
 create temp table sampling_universe_tmp as
-select distinct cust_acct_key, acct_id from offer_incentive_final_allocations_union_all_dy_4_mail
+select distinct cust_acct_key, acct_id from offer_incentive_final_allocations_union_all_dy_3_mail
 except
 select distinct cust_acct_key, acct_id from Vendor_custs_part1;
 
@@ -264,12 +253,12 @@ union
 select 11 as priority_custs_tmp, 'LL' as cust_category, cust_acct_key from not_sampled_universe where potential_spend_segment='LL';
 
 
-drop table offer_incentive_final_allocations_union_all_dy_4_mail_2;
-create temp table offer_incentive_final_allocations_union_all_dy_4_mail_2 as
+drop table offer_incentive_final_allocations_union_all_dy_3_mail_2;
+create temp table offer_incentive_final_allocations_union_all_dy_3_mail_2 as
 select *, case when priority_custs_tmp is null then 12 else priority_custs_tmp end as priority_custs 
 from
 (select b.priority_custs_tmp, b.cust_category, a.* from
-offer_incentive_final_allocations_union_all_dy_4_mail a
+offer_incentive_final_allocations_union_all_dy_3_mail a
 left join
 priority_custs_list_dm1 b
 on a.cust_acct_key=b.cust_acct_key)a;
@@ -277,7 +266,7 @@ on a.cust_acct_key=b.cust_acct_key)a;
 
 drop table priority_custs_list_dm1_final;
 create table priority_custs_list_dm1_final as
-select priority_custs,cust_category,cust_acct_key from offer_incentive_final_allocations_union_all_dy_4_mail_2 group by 1,2,3;
+select priority_custs,cust_category,cust_acct_key from offer_incentive_final_allocations_union_all_dy_3_mail_2 group by 1,2,3;
 
 
 Grant list, select on priority_custs_list_dm1_final to pprcmmrn01_usr_read;
@@ -290,7 +279,7 @@ sum(rebate) as total_rebate,
 total_rebate*resp_rate as cost_redemption
 from
 (select priority_custs,cust_category,account_number,type,count(distinct precima_ofb_id) as offers,sum(inc_bound_final) as rebate  
-from offer_incentive_final_allocations_union_all_dy_4_mail_2 
+from offer_incentive_final_allocations_union_all_dy_3_mail_2 
 group by 1,2,3,4)a
 group by 1,2,3,4
 
@@ -298,11 +287,11 @@ group by 1,2,3,4
 -------------SUMMARY
 
 --vendor
-select cust_acct_key, sum(inc_bound_final) as vendor_rebate from offer_incentive_final_allocations_union_all_dy_4_mail_2 where type='vendor' group by 1
+select cust_acct_key, sum(inc_bound_final) as vendor_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='vendor' group by 1
 --product
-select cust_acct_key, sum(inc_bound_final) as product_rebate from offer_incentive_final_allocations_union_all_dy_4_mail_2 where type='product' group by 1
+select cust_acct_key, sum(inc_bound_final) as product_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='product' group by 1
 --ofb
-select cust_acct_key, sum(inc_bound_final) as ofb_rebate from offer_incentive_final_allocations_union_all_dy_4_mail_2 where type='ofb' group by 1
+select cust_acct_key, sum(inc_bound_final) as ofb_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='ofb' group by 1
 
 
 --total
@@ -311,15 +300,15 @@ drop table ty_rebate_summary_final;
 create table ty_rebate_summary_final as
 select b.priority_custs, b.cust_category, a.* from
 (select a.*,b.vendor_rebate,c.product_rebate,d.ofb_rebate from
-(select cust_acct_key, sum(inc_bound_final) as total_rebate from offer_incentive_final_allocations_union_all_dy_4_mail_2 group by 1)a
+(select cust_acct_key, sum(inc_bound_final) as total_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 group by 1)a
 left join
-(select cust_acct_key, sum(inc_bound_final) as vendor_rebate from offer_incentive_final_allocations_union_all_dy_4_mail_2 where type='vendor' group by 1)b
+(select cust_acct_key, sum(inc_bound_final) as vendor_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='vendor' group by 1)b
 on a.cust_acct_key=b.cust_acct_key
 left join
-(select cust_acct_key, sum(inc_bound_final) as product_rebate from offer_incentive_final_allocations_union_all_dy_4_mail_2 where type='product' group by 1)c
+(select cust_acct_key, sum(inc_bound_final) as product_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='product' group by 1)c
 on a.cust_acct_key=c.cust_acct_key
 left join
-(select cust_acct_key, sum(inc_bound_final) as ofb_rebate from offer_incentive_final_allocations_union_all_dy_4_mail_2 where type='ofb' group by 1)d
+(select cust_acct_key, sum(inc_bound_final) as ofb_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='ofb' group by 1)d
 on a.cust_acct_key=d.cust_acct_key) a
 left join
 priority_custs_list_dm1_final b
@@ -336,14 +325,16 @@ Grant list, select on ty_rebate_summary_final to pprcmmrn01_usr_read;
 
 drop table final_custs_list_dm1;
 create table final_custs_list_dm1 as
-select * from priority_custs_list_dm1_final where priority_custs in (1,2,3,4,5,6,7);  --1,941,351 customers
+--select * from priority_custs_list_dm1_final where priority_custs in (1,2,3,4,5,6,7);  --1,941,351 customers
+select * from priority_custs_list_dm1_final where priority_custs in (1,2,3,4,5,6,7,8,9);  --2,621,567 customers
+
 
 drop table final_offer_assgmt_table_dm1;
 create table final_offer_assgmt_table_dm1 as
 select *, case when incentive_type='Points' then round((inc_bound_final * 1000),0) else round(inc_bound_final,2) end as incentive_print
 from
 (select b.priority_custs,b.cust_category,a.*,c.incentive_type from 
-offer_incentive_final_allocations_union_all_dy_4 a,
+offer_incentive_final_allocations_union_all_dy_3 a,
 final_custs_list_dm1 b,
 msn_campaign_offer_bank_ty_incentive c
 where 
