@@ -76,35 +76,35 @@ Grant list, select on offer_incentive_final_allocations_union_all_dy to pprcmmrn
 --when pe between (-6,-1), choose the max incentive that is SMALLER than avg_amt;   
 --when pe between (-1, -0.5) OR incentive_min > avg_amt, choose incentive_min straightforwardly
 
-/*
+
 create temp table vertical_pe as
-select * from garcia_acct_ofb_incentive_lift_new where (pe between -6 and -1);
+select * from garcia_cust_ofb_incentive_lift_new where (pe between -6 and -1);
 
 create temp table vertical_pe_union as
-select distinct acct_id,ofb_id,avg_amt,incentive_min as tmp from vertical_pe union
-select distinct acct_id,ofb_id,avg_amt,incentive_1 as tmp from vertical_pe union
-select distinct acct_id,ofb_id,avg_amt,incentive_2 as tmp from vertical_pe union
-select distinct acct_id,ofb_id,avg_amt,incentive_3 as tmp from vertical_pe union
-select distinct acct_id,ofb_id,avg_amt,incentive_max as tmp from vertical_pe;
+select distinct cust_acct_key,ofb_id,avg_amt,incentive_min as tmp from vertical_pe union
+select distinct cust_acct_key,ofb_id,avg_amt,incentive_1 as tmp from vertical_pe union
+select distinct cust_acct_key,ofb_id,avg_amt,incentive_2 as tmp from vertical_pe union
+select distinct cust_acct_key,ofb_id,avg_amt,incentive_3 as tmp from vertical_pe union
+select distinct cust_acct_key,ofb_id,avg_amt,incentive_max as tmp from vertical_pe;
 
 drop table vertical_pe_max_lift;
 create temp table vertical_pe_max_lift as
-select distinct acct_id, ofb_id as precima_ofb_id, max(tmp) as inc_optimal
+select distinct cust_acct_key, ofb_id as precima_ofb_id, max(tmp) as inc_optimal
 from vertical_pe_union where tmp <= avg_amt
 group by 1,2;
 
-drop table dy_garcia_acct_ofb_inc_optimal;
-create table dy_garcia_acct_ofb_inc_optimal as
+drop table dy_garcia_cust_ofb_inc_optimal;
+create table dy_garcia_cust_ofb_inc_optimal as
 (select *, incentive_min as inc_optimal 
- from garcia_acct_ofb_incentive_lift_new where (pe<-0.5 and pe>-1)  or (incentive_min > avg_amt))     --pe between (-1, -0.5) OR incentive_min > avg_amt
+ from garcia_cust_ofb_incentive_lift_new where (pe<-0.5 and pe>-1)  or (incentive_min > avg_amt))     --pe between (-1, -0.5) OR incentive_min > avg_amt
 union
 (select a.*, b.inc_optimal from
 vertical_pe a, vertical_pe_max_lift b															  --pe between (-6,-1)
-where a.acct_id=b.precima_ofb_id
-and a.ofb_id=b.ofb_id);
+where a.cust_acct_key=b.cust_acct_key
+and a.ofb_id=b.precima_ofb_id);
 
-Grant list, select on dy_garcia_acct_ofb_inc_optimal to pprcmmrn01_usr_read ;
-*/
+Grant list, select on dy_garcia_cust_ofb_inc_optimal to pprcmmrn01_usr_read ;
+
 
 -------------------------------------------------------------------------------
 --change point based incentive_max and min to pound based
@@ -122,8 +122,8 @@ drop table offer_incentive_final_allocations_union_all_dy_1;
 create temp table offer_incentive_final_allocations_union_all_dy_1 as
 select a.*, round(b.incentive_1,2) as incentive_1,round(b.incentive_2,2) as incentive_2, round(b.incentive_3,2) as incentive_3,b.pe,b.avg_amt
 from offer_incentive_final_allocations_union_all_dy_0 a
-left join (select acct_id, ofb_id, pe, avg_amt, incentive_1,incentive_2,incentive_3 from dy_garcia_acct_ofb_inc_optimal group by 1,2,3,4,5,6,7) b
-on a.acct_id=b.acct_id and a.precima_ofb_id=b.ofb_id;
+left join (select cust_acct_key, ofb_id, pe, avg_amt, incentive_1,incentive_2,incentive_3 from dy_garcia_cust_ofb_inc_optimal group by 1,2,3,4,5,6,7) b
+on a.cust_acct_key=b.cust_acct_key and a.precima_ofb_id=b.ofb_id;
 
 
 
@@ -160,8 +160,8 @@ from (
 select a.*, b.inc_optimal from 
 offer_incentive_final_allocations_union_all_dy_2 a
 left join
-dy_garcia_acct_ofb_inc_optimal b
-on a.acct_id=b.acct_id and a.precima_ofb_id=b.ofb_id)a
+dy_garcia_cust_ofb_inc_optimal b
+on a.cust_acct_key=b.cust_acct_key and a.precima_ofb_id=b.ofb_id)a
 ;
 
 --NOTICE: A total of of 3576 NULL incentive_final
