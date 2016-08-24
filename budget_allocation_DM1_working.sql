@@ -391,7 +391,9 @@ case
 when window=1 then '11/20/2016'
 when window=2 then '12/11/2016'
 when window=3 then '1/1/2017' end as BARCODE_END_DATE
-from vendor_cnt where cust_acct_key in (select cust_acct_key from mrsn_sbo_assignment_2016Xmas_neox where basket_offer_type!='non-collector');
+from vendor_cnt where cust_acct_key in (select cust_acct_key from qa_final_offer_assgmt_table_dm1);
+ --(select cust_acct_key from mrsn_sbo_assignment_2016Xmas_neox where basket_offer_type!='non-collector');
+--since neo is doing new table ... use a temporary table 
 
 
 
@@ -416,19 +418,19 @@ Grant list, select on qa_final_offer_assgmt_table_dm1 to pprcmmrn01_usr_read;
 
 
 --QA
-select count(distinct cust_acct_key) from final_offer_assgmt_table_dm1;
-select cust_acct_key, count(*) as cnt from final_offer_assgmt_table_dm1 group by 1 having cnt !=8;
+select count(distinct cust_acct_key) from final_offer_assgmt_window_dm1;
+select cust_acct_key, count(*) as cnt from final_offer_assgmt_window_dm1 group by 1 having cnt !=8;
 --cohort
-select cohort,count(distinct cust_acct_key) from final_offer_assgmt_table_dm1 group by 1;
+select cohort,count(distinct cust_acct_key) from final_offer_assgmt_window_dm1 group by 1;
 --account_number and cust_acct_key
-select count(distinct cust_acct_key) from final_offer_assgmt_table_dm1; --2651267
-select count(distinct account_number) from final_offer_assgmt_table_dm1; --2651267
-select cust_acct_key,count(distinct account_number) as cnt from final_offer_assgmt_table_dm1 group by 1 having cnt > 1;
-select account_number,count(distinct cust_acct_key) as cnt from final_offer_assgmt_table_dm1 group by 1 having cnt > 1;
+select count(distinct cust_acct_key) from final_offer_assgmt_window_dm1; --2651267
+select count(distinct account_number) from final_offer_assgmt_window_dm1; --2651267
+select cust_acct_key,count(distinct account_number) as cnt from final_offer_assgmt_window_dm1 group by 1 having cnt > 1;
+select account_number,count(distinct cust_acct_key) as cnt from final_offer_assgmt_window_dm1 group by 1 having cnt > 1;
 --check null columns
-select * from final_offer_assgmt_table_dm1 where inc_bound_final is null;
+select * from final_offer_assgmt_window_dm1 where inc_bound_final is null;
 --check priority groups
-select priority_custs,cust_category,count(distinct cust_acct_key) as cnt from final_offer_assgmt_table_dm1 group by 1,2;
+select priority_custs,cust_category,count(distinct cust_acct_key) as cnt from final_offer_assgmt_window_dm1 group by 1,2;
 --priority_custs	cust_category	cnt
 --1					vendor		537390
 --2					sample		306161
@@ -441,33 +443,33 @@ select priority_custs,cust_category,count(distinct cust_acct_key) as cnt from fi
 --9					LH			447493
 
 --check different offer types
-select distinct type from final_offer_assgmt_table_dm1;
-select distinct type, priority from final_offer_assgmt_table_dm1;
-select distinct precimaofferid from final_offer_assgmt_table_dm1 where type='product';
+select distinct type from final_offer_assgmt_window_dm1;
+select distinct type, priority from final_offer_assgmt_window_dm1;
+select distinct precimaofferid from final_offer_assgmt_window_dm1 where type='product';
 
 --check incentive range and incentive type
-select * from final_offer_assgmt_table_dm1 where incentive_print > incentive_max or incentive_print < incentive_min;
-select * from final_offer_assgmt_table_dm1 where inc_bound_final > inc_max_tmp or incentive_print < inc_min_tmp;
+select * from final_offer_assgmt_window_dm1 where incentive_print > incentive_max or incentive_print < incentive_min;
+select * from final_offer_assgmt_window_dm1 where inc_bound_final > inc_max_tmp or incentive_print < inc_min_tmp;
 
-select distinct incentive_type from final_offer_assgmt_table_dm1 where precima_ofb_id in ('MOR-62','MOR-89','MOR-26','MOR-86','MOR-11','MOR-67');
-select distinct incentive_print from final_offer_assgmt_table_dm1 where precima_ofb_id in ('MOR-62','MOR-89','MOR-26','MOR-86','MOR-11','MOR-67');
+select distinct incentive_type from final_offer_assgmt_window_dm1 where precima_ofb_id in ('MOR-62','MOR-89','MOR-26','MOR-86','MOR-11','MOR-67');
+select distinct incentive_print from final_offer_assgmt_window_dm1 where precima_ofb_id in ('MOR-62','MOR-89','MOR-26','MOR-86','MOR-11','MOR-67');
 
-select distinct incentive_print from final_offer_assgmt_table_dm1;
+select distinct incentive_print from final_offer_assgmt_window_dm1;
 
 --cheeck super group rules
-select acct_id,item1,count(*) as cnt from final_offer_assgmt_table_dm1 group by 1,2 having cnt >1;
-select acct_id,precima_ofb_id,count(*) as cnt from final_offer_assgmt_table_dm1 group by 1,2 having cnt >1;
-select acct_id,offer_bank_group_code, count(*) as cnt from final_offer_assgmt_table_dm1 group by 1,2 having cnt >1;
-select acct_id,offer_bank_supergroup_code, count(*) as cnt from final_offer_assgmt_table_dm1 group by 1,2 having cnt >2;
+select acct_id,item1,count(*) as cnt from final_offer_assgmt_window_dm1 group by 1,2 having cnt >1;
+select acct_id,precima_ofb_id,count(*) as cnt from final_offer_assgmt_window_dm1 group by 1,2 having cnt >1;
+select acct_id,offer_bank_group_code, count(*) as cnt from final_offer_assgmt_window_dm1 group by 1,2 having cnt >1;
+select acct_id,offer_bank_supergroup_code, count(*) as cnt from final_offer_assgmt_window_dm1 group by 1,2 having cnt >2;
 
 
 --random check
-select *  from final_offer_assgmt_table_dm1 where cust_acct_key =178904 and item1 in ('247','2');
+select *  from final_offer_assgmt_window_dm1 where cust_acct_key =178904 and item1 in ('247','2');
 
 
 --general stats
 
-select priority_custs,cust_category,count(distinct cust_acct_key) from final_offer_assgmt_table_dm1 group by 1,2;
+select priority_custs,cust_category,count(distinct cust_acct_key) from final_offer_assgmt_window_dm1 group by 1,2;
 --priority_custs	cust_category	count
 --1	vendor	537390
 --2	sample	306161
