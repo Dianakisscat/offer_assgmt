@@ -180,10 +180,10 @@ Grant list, select on offer_incentive_final_allocations_union_all_dy_3 to pprcmm
 --all_custs_part7_priority  3514452 customers in total, using Neo's old table
 
 drop table offer_incentive_final_allocations_union_all_dy_3_mail; --3,703,441
-create table offer_incentive_final_allocations_union_all_dy_3_mail as
+create temp table offer_incentive_final_allocations_union_all_dy_3_mail as
 select * from offer_incentive_final_allocations_union_all_dy_3 where mail_opt_in_ind<>0;
 
-Grant list, select on offer_incentive_final_allocations_union_all_dy_3_mail to pprcmmrn01_usr_read ;
+--Grant list, select on offer_incentive_final_allocations_union_all_dy_3_mail to pprcmmrn01_usr_read ;
 
 
 --vendor customer offer assgmt
@@ -193,9 +193,8 @@ select * from
 offer_incentive_final_allocations_union_all_dy_3_mail 
 where cust_acct_key in (select cust_acct_key from offer_incentive_final_allocations_union_all_dy_3_mail where type='vendor');
 
-
+/*
 -- sampling universe: non vendor customers, without null potential spend customers
-
 drop table sampling_universe_tmp;  --3,166,051
 create temp table sampling_universe_tmp as
 select distinct cust_acct_key, acct_id from offer_incentive_final_allocations_union_all_dy_3_mail
@@ -211,12 +210,8 @@ left join
 on a.cust_acct_key=b.cust_acct_key
 where potential_spend_segment is not null;
 
-
-
 --using sas to do stratified sampling
-
 --select count(*) from dy_sample_result_dm1; 306,161
-
 --exclude sample customers
 drop table not_sampled_universe;
 create table not_sampled_universe as
@@ -224,12 +219,12 @@ select cust_acct_key,potential_spend_segment from sampling_universe
 except
 select cust_acct_key,potential_spend_segment from dy_sample_result_dm1;
 
+*/
 
 
-
---cust list
+-- temp cust list
 drop table priority_custs_list_dm1;
-create table priority_custs_list_dm1 as  --
+create temp table priority_custs_list_dm1 as  --
 select 1 as priority_custs_tmp, 'vendor' as cust_category, cust_acct_key from (select distinct cust_acct_key from Vendor_custs_part1)a
 union
 select 2 as priority_custs_tmp, 'sample' as cust_category, cust_acct_key from dy_sample_result_dm1
@@ -254,7 +249,7 @@ select 11 as priority_custs_tmp, 'LL' as cust_category, cust_acct_key from not_s
 
 
 drop table offer_incentive_final_allocations_union_all_dy_3_mail_2;
-create temp table offer_incentive_final_allocations_union_all_dy_3_mail_2 as
+create table offer_incentive_final_allocations_union_all_dy_3_mail_2 as
 select *, case when priority_custs_tmp is null then 12 else priority_custs_tmp end as priority_custs 
 from
 (select b.priority_custs_tmp, b.cust_category, a.* from
@@ -263,6 +258,7 @@ left join
 priority_custs_list_dm1 b
 on a.cust_acct_key=b.cust_acct_key)a;
 
+---------------Final Cust List for DM1
 
 drop table priority_custs_list_dm1_final;
 create table priority_custs_list_dm1_final as
@@ -271,8 +267,11 @@ select priority_custs,cust_category,cust_acct_key from offer_incentive_final_all
 
 Grant list, select on priority_custs_list_dm1_final to pprcmmrn01_usr_read;
 
+
+-------------Group Level Rebate Summary
+
 select priority_custs,cust_category,type,
-case when type='vendor' then 0 when type='product' then 0.7 when type='ofb' then 0.7 else 1 end as resp_rate,
+case when type='vendor' then 0 when type='product' then 0.65 when type='ofb' then 0.65 else 1 end as resp_rate,
 count(distinct account_number) as custs,
 sum(offers) as offers,
 sum(rebate) as total_rebate
@@ -283,7 +282,7 @@ group by 1,2,3,4)a
 group by 1,2,3,4 order by 1,3;
 
 
--------------SUMMARY
+-------------Cust Level Rebate Summary
 
 --vendor
 select cust_acct_key, sum(inc_bound_final) as vendor_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='vendor' group by 1
@@ -367,7 +366,7 @@ on a.cust_acct_key=b.cust_acct_key;
 
 
 drop table final_offer_assgmt_window_dm1;
-create temp table final_offer_assgmt_window_dm1 as
+create table final_offer_assgmt_window_dm1 as
 select *, case
 when type='vendor' and type_rank = 1 then 1
 when type='vendor' and type_rank = 2 then 2
@@ -392,11 +391,11 @@ case
 when window=1 then '11/20/2016'
 when window=2 then '12/11/2016'
 when window=3 then '1/1/2017' end as BARCODE_END_DATE
-from vendor_cnt;
+from vendor_cnt where cust_acct_key in (select cust_acct_key from mrsn_sbo_assignment_2016Xmas_neox where basket_offer_type!='non-collector');
 
 
 
-
+--This Files Handed Over to Queenie for Fresh QA
 
 
 drop table qa_final_offer_assgmt_table_dm1;
@@ -406,7 +405,6 @@ priority_custs,cust_category,cust_acct_key,acct_id,type,precimavendorid,precimao
 precima_ofb_id,offer_bank_group_code,offer_bank_supergroup_code,
 window,channel,incentive_print,incentive_type
 from final_offer_assgmt_window_dm1
-where cust_acct_key in (select cust_acct_key from mrsn_sbo_assignment_2016Xmas_neox where basket_offer_type!='non-collector')
 ;
 
 Grant list, select on qa_final_offer_assgmt_table_dm1 to pprcmmrn01_usr_read;

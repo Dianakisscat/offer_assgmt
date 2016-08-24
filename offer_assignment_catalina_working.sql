@@ -68,6 +68,7 @@ union
 select 30 as cohort,* from all_offers_union_30dyang;
 
 
+Grant list, select on all_custs_offer_pool to pprcmmrn01_usr_read ;
 /*************************************************/
 /*****AVG TRX SPEND AMOUNT ALL CUSTOMERS**********/
 /*************************************************/
@@ -134,6 +135,7 @@ union
 select 30 as cohort,* from avg_txn_sales_ofb_id_30 ;
 
 
+Grant list, select on avg_txn_sales_ofb_id_all to pprcmmrn01_usr_read ;
 
 /*************************************************/
 /*****CATALINA OFFER ASSIGNMENT PROCESS***********/
@@ -146,7 +148,9 @@ create temp table catalina_offer_pool as
 select * from all_custs_offer_pool 
 except 
 select cohort,acct_id,item1,v10,rank,purch_flag,precima_ofb_id,offer_bank_group_code,offer_bank_supergroup_code,type,precimavendorid,precimaofferid,priority 
-from offer_incentive_final_allocations_union_all_dy_4 where mail_opt_in_ind<>0;  --DM1 results here
+from 
+offer_incentive_final_allocations_union_all_dy_4            -------------------DM1 results here
+where mail_opt_in_ind<>0;  
 
 
 
@@ -220,7 +224,8 @@ where final_rank <= 32;
 alter table offer_assignment_final_ct drop column ofb_rank,class_rank,super_rank,final_rank restrict;
 
 --customers with fewer than 32 offers are not qualified
-delete from offer_assignment_final_ct where acct_id in (select acct_id from (select acct_id, count(*) as offer_cnt from offer_assignment_final_ct group by 1 having offer_cnt < 32)a);
+delete from offer_assignment_final_ct where acct_id in 
+	(select acct_id from (select acct_id, count(*) as offer_cnt from offer_assignment_final_ct group by 1 having offer_cnt < 32)a);
 
 
 --select count(distinct acct_id) from offer_assignment_final_ct --4,446,344
