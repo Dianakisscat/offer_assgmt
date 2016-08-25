@@ -346,71 +346,93 @@ Grant list, select on offer_incentive_final_allocations_catalina to pprcmmrn01_u
 /*************************ADJUST INCENTIVE TYPE***********************************/
 /*********************************************************************************/
 
+--change point based incentive_max and min to pound based
+drop table offer_incentive_final_allocations_catalina_0
+create temp table offer_incentive_final_allocations_catalina_0 as
+select *, case when precima_ofb_id in  ('MOR-62','MOR-89','MOR-26','MOR-86','MOR-11','MOR-67') then incentive_max/1000 else incentive_max end as inc_max_tmp,
+case when precima_ofb_id in  ('MOR-62','MOR-89','MOR-26','MOR-86','MOR-11','MOR-67') then incentive_min/1000 else incentive_min end as inc_min_tmp
+from offer_incentive_final_allocations_catalina;
 
 /*first column: adjusted incentive rate*/
 
 drop table offer_incentive_final_allocations_catalina_1;
 create temp table offer_incentive_final_allocations_catalina_1 as
-select a.*, b.incentive_1,b.incentive_2,b.incentive_3,b.pe,b.avg_amt
-from offer_incentive_final_allocations_catalina a
-left join (select acct_id, ofb_id, pe, avg_amt, incentive_1,incentive_2,incentive_3 from dy_garcia_acct_ofb_inc_optimal group by 1,2,3,4,5,6,7) b
-on a.acct_id=b.acct_id and a.precima_ofb_id=b.ofb_id;
+select a.*, round(b.incentive_1,2) as incentive_1,round(b.incentive_2,2) as incentive_2, round(b.incentive_3,2) as incentive_3,b.pe,b.avg_amt
+from offer_incentive_final_allocations_catalina_0 a
+left join (select cust_acct_key, ofb_id, pe, avg_amt, incentive_1,incentive_2,incentive_3 from dy_garcia_cust_ofb_inc_optimal group by 1,2,3,4,5,6,7) b
+on a.cust_acct_key=b.cust_acct_key and a.precima_ofb_id=b.ofb_id;
 
 drop table offer_incentive_final_allocations_catalina_2;
 create temp table offer_incentive_final_allocations_catalina_2 as
-select *, 
-case when incentive_tmp <= incentive_min then incentive_min when incentive_tmp >= incentive_max then incentive_max when incentive_tmp is null then incentive_min else incentive_tmp end as inc_adjusted,
-case when round(inc_adjusted,2) != round(incentive_min,2) and round(inc_adjusted,2) != round(incentive_1,2) and round(inc_adjusted,2) != round(incentive_2,2) and round(inc_adjusted,2) != round(incentive_3,2) and round(inc_adjusted,2) != round(incentive_max,2) then (inc_adjusted - 0.05) end as inc_lower,
-inc_lower + 0.1 as inc_upper,
+select *,
+case when incentive_tmp <= inc_min_tmp then inc_min_tmp when incentive_tmp >= inc_max_tmp then inc_max_tmp when incentive_tmp is null then inc_min_tmp else incentive_tmp end as inc_adjusted,
+case when
+(inc_adjusted != inc_min_tmp and inc_adjusted!= incentive_1 and inc_adjusted!= incentive_2  and inc_adjusted != inc_max_tmp )
+-- and inc_adjusted != incentive_3 and inc_adjusted!= incentive_2  ) 
+then (inc_adjusted - 0.05) end as inc_lower, inc_lower + 0.1 as inc_upper,
 case when pe between -6 and -1 then inc_upper when pe between -1 and -0.5 then inc_lower end as inc_bound_adjusted,
-case when inc_bound_adjusted is null then inc_adjusted else inc_bound_adjusted end as inc_bound_temp
-from  offer_incentive_final_allocations_catalina_1; 
+case when inc_bound_adjusted is null then inc_adjusted else inc_bound_adjusted end as inc_bound_final
+from  offer_incentive_final_allocations_catalina_1 where incentive_3 is null
+union
+select *,
+case when incentive_tmp <= inc_min_tmp then inc_min_tmp when incentive_tmp >= inc_max_tmp then inc_max_tmp when incentive_tmp is null then inc_min_tmp else incentive_tmp end as inc_adjusted,
+case when
+(inc_adjusted != inc_min_tmp and inc_adjusted!= incentive_1 and inc_adjusted!= incentive_2 and inc_adjusted != incentive_3 and inc_adjusted != inc_max_tmp )
+--  and inc_adjusted!= incentive_2  ) 
+then (inc_adjusted - 0.05) end as inc_lower, inc_lower + 0.1 as inc_upper,
+case when pe between -6 and -1 then inc_upper when pe between -1 and -0.5 then inc_lower end as inc_bound_adjusted,
+case when inc_bound_adjusted is null then inc_adjusted else inc_bound_adjusted end as inc_bound_final
+from  offer_incentive_final_allocations_catalina_1 where incentive_3 is not null; 
 
+
+/*second column: purely optimal rate based on PE*/
 
 drop table offer_incentive_final_allocations_catalina_3;
 create table offer_incentive_final_allocations_catalina_3 as
-select *, 
-case when precima_ofb_id in  ('MOR-62','MOR-89','MOR-26','MOR-86','MOR-11','MOR-67') then inc_bound_temp/1000 else inc_bound_temp end as inc_bound_final 
-from
-(
-select account_number,cust_acct_key,cohort,acct_id,item1,v10,rank,purch_flag,precima_ofb_id,offer_bank_group_code,offer_bank_supergroup_code,type,precimavendorid,precimaofferid,priority,channel,email_opt_in_ind,mail_opt_in_ind,phone_opt_in_ind,sms_opt_in_ind,incentive_tmp,avg_ofb_txns,disc_cap_n_collared,incentive_min,incentive_max,incentive_incrementals,incentive_final,inc_bound_temp
-from offer_incentive_final_allocations_catalina_2 where type='ofb'
-union
-select *, incentive_final as inc_bound_temp from offer_incentive_final_allocations_catalina  where type='vendor'
-union
-select *, incentive_final as inc_bound_temp from offer_incentive_final_allocations_catalina where type='product'
-)a;
+select *,
+case when inc_optimal is null then inc_min_tmp else inc_optimal end as inc_optimal_final
+from (
+select a.*, b.inc_optimal from 
+offer_incentive_final_allocations_catalina_2 a
+left join
+dy_garcia_cust_ofb_inc_optimal b
+on a.cust_acct_key=b.cust_acct_key and a.precima_ofb_id=b.ofb_id)a
+;
+
+--NOTICE: A total of of 3576 NULL incentive_final
+--select count(*) from offer_incentive_final_allocations_union_all_dy where incentive_final is null
+
+Grant list, select on offer_incentive_final_allocations_catalina_3 to pprcmmrn01_usr_read;
+
+
 
 
 /*********************************************************************************/
 /*************************BUDGET ALLOCATION STEP**********************************/
 /*********************************************************************************/
 
---QA: inc_bound_final null / # of offers per customers / super group rules
 --include only non-mail-opt-in customers
-
-
 --select count(distinct acct_id) from offer_incentive_final_allocations_catalina_3 where mail_opt_in_ind =0
 --1,022,766
 
 drop table offer_incentive_final_allocations_catalina_non_mail;
 create table offer_incentive_final_allocations_catalina_non_mail as
-select * from offer_incentive_final_allocations_catalina_3 where mail_opt_in_ind=0;
+select * from offer_incentive_final_allocations_catalina_3 
+where 
+mail_opt_in_ind=0;
 
-
+/*
 --vendor customer offer assgmt
 drop table Vendor_custs_part1;  --164,727
 create temp table Vendor_custs_part1 as
 select * from
-offer_incentive_final_allocations_catalina_non_mail 
-where cust_acct_key in (select cust_acct_key from offer_incentive_final_allocations_catalina_non_mail where type='vendor');
-
+offer_incentive_final_allocations_catalina_all 
+where cust_acct_key in (select cust_acct_key from offer_incentive_final_allocations_catalina_all where type='vendor');
 
 -- sampling universe: non vendor customers, without null potential spend customers
-
 drop table sampling_universe_tmp;  --858,039
 create temp table sampling_universe_tmp as
-select distinct cust_acct_key, acct_id from offer_incentive_final_allocations_catalina_non_mail
+select distinct cust_acct_key, acct_id from offer_incentive_final_allocations_catalina_all
 except
 select distinct cust_acct_key, acct_id from Vendor_custs_part1;
 
@@ -433,6 +455,8 @@ create table not_sampled_universe as
 select cust_acct_key,potential_spend_segment from sampling_universe
 except
 select cust_acct_key,potential_spend_segment from dy_sample_result_catalina;
+*/
+
 
 --cust list
 drop table priority_custs_list_catalina;
@@ -469,19 +493,97 @@ left join
 priority_custs_list_catalina b
 on a.cust_acct_key=b.cust_acct_key)a;
 
+--------------Back up CATALINA
+drop table offer_incentive_final_allocations_catalina_backup;
+create table offer_incentive_final_allocations_catalina_backup as
+select a.*,b.priority_custs,b.cust_category 
+from offer_incentive_final_allocations_catalina_3 a, priority_custs_list_dm1_final b
+where a.cust_acct_key=b.cust_acct_key
+and a.mail_opt_in_ind=1
+and b.priority_custs in (10,11,12);
 
-select priority_custs,cust_category,type,
-case when type='vendor' then 0 when type='product' then 0.7 when type='ofb' then 0.7 else 1 end as resp_rate,
-count(distinct account_number) as custs,
-sum(offers) as offers,
-sum(rebate) as total_rebate
---,total_rebate*resp_rate as cost_redemption
+
+--------------All CATALINA OFFER INCLUDING LOADED AND BACKUP
+drop table offer_incentive_final_allocations_catalina_all;
+create table offer_incentive_final_allocations_catalina_all  as
+select 
+mail_opt_in_ind,priority_custs,cust_category,account_number,cust_acct_key,acct_id,cohort,item1,rank,precima_ofb_id,offer_bank_group_code,offer_bank_supergroup_code,type,precimavendorid,precimaofferid,priority,channel,incentive_tmp,incentive_min,incentive_max,incentive_incrementals,incentive_final,inc_max_tmp,inc_min_tmp,incentive_1,incentive_2,incentive_3,pe,inc_adjusted,inc_lower,inc_upper,inc_bound_adjusted,inc_bound_final,inc_optimal,inc_optimal_final
+from  offer_incentive_final_allocations_catalina_non_mail_2
+union
+select 
+mail_opt_in_ind,priority_custs,cust_category,account_number,cust_acct_key,acct_id,cohort,item1,rank,precima_ofb_id,offer_bank_group_code,offer_bank_supergroup_code,type,precimavendorid,precimaofferid,priority,channel,incentive_tmp,incentive_min,incentive_max,incentive_incrementals,incentive_final,inc_max_tmp,inc_min_tmp,incentive_1,incentive_2,incentive_3,pe,inc_adjusted,inc_lower,inc_upper,inc_bound_adjusted,inc_bound_final,inc_optimal,inc_optimal_final
+from  offer_incentive_final_allocations_catalina_backup;
+
+
+
+---------------ALL CATALINA CUSTOMER LISTS (including loaded and backup)
+
+drop table priority_custs_list_catalina_final;   
+create table priority_custs_list_catalina_final as
+select mail_opt_in_ind,priority_custs,cust_category,cust_acct_key from offer_incentive_final_allocations_catalina_all group by 1,2,3,4;
+
+
+Grant list, select on priority_custs_list_catalina_final to pprcmmrn01_usr_read;
+
+--Point based offers changed
+--Add back up priority number
+drop table final_offer_assgmt_table_catalina;
+create table final_offer_assgmt_table_catalina as
+select *, case 
+when mail_opt_in_ind != 0 and priority_custs =1 then 7 
+when mail_opt_in_ind != 0 and priority_custs =5 then 2
+when mail_opt_in_ind != 0 and priority_custs =6 then 4
+when mail_opt_in_ind != 0 and priority_custs =7 then 5
+when mail_opt_in_ind != 0 and priority_custs =8 then 3
+when mail_opt_in_ind != 0 and priority_custs =9 then 13
+when mail_opt_in_ind != 0 and priority_custs =10 then 15
+when mail_opt_in_ind != 0 and priority_custs =11 then 17
+when mail_opt_in_ind != 0 and priority_custs =12 then 19 end as backup_priority,
+case 
+when incentive_type='Points' then round((inc_bound_final * 1000),0) else round(inc_bound_final,2) end as incentive_print
 from
-(select priority_custs,cust_category,account_number,type,count(distinct precima_ofb_id) as offers,sum(inc_bound_final) as rebate  
-from offer_incentive_final_allocations_catalina_non_mail_2 
-where mail_opt_in_ind <> 0
-group by 1,2,3,4)
-group by 1,2,3,4
+(select a.*,c.incentive_type from 
+offer_incentive_final_allocations_catalina_all a,
+msn_campaign_offer_bank_ty_incentive c
+where 
+a.precima_ofb_id=c.precima_ofb_id)a;
+
+
+
+
+
+---------------This Files Handed Over to Queenie for Fresh QA
+
+
+drop table qa_final_offer_assgmt_table_catalina;
+create table qa_final_offer_assgmt_table_catalina as 
+select
+'CATALINA' as channel, 
+mail_opt_in_ind,priority_custs,cust_category,backup_priority,cust_acct_key,acct_id,type,precimavendorid,precimaofferid,
+precima_ofb_id,offer_bank_group_code,offer_bank_supergroup_code,
+incentive_print,incentive_type
+from final_offer_assgmt_table_catalina
+;
+
+Grant list, select on qa_final_offer_assgmt_table_catalina to pprcmmrn01_usr_read;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ----------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------
@@ -493,16 +595,7 @@ select distinct cust_acct_key from priority_custs_list_dm1_final  --mail custome
 select distinct cust_acct_key from priority_custs_list_catalina  --non mail customers 1006819
 
 
-create table catalina_dm1_both_custs as 
-select distinct cust_acct_key from offer_incentive_final_allocations_catalina_3
-intersect 
-select distinct cust_acct_key from priority_custs_list_dm1_final;  --3,284,716
 
-
-create table catalina_dm1_both_priority as
-select b.* from catalina_dm1_both_custs a, priority_custs_list_dm1_final b where a.cust_acct_key=b.cust_acct_key;
-
-select priority_custs,cust_category,count(*) as cnt from catalina_dm1_both_priority group by 1,2;
 
 --catalina part budget breakdown
 select priority_custs,cust_category,type,
@@ -540,3 +633,24 @@ from (select a.*,b.priority_custs,b.cust_category from
 		)a 
 group by 1,2,3,4)a
 group by 1,2,3,4 order by 1,3;
+
+
+---------------Rebate Summary
+
+select priority_custs,cust_category,type,
+case when type='vendor' then 0 when type='product' then 0.7 when type='ofb' then 0.7 else 1 end as resp_rate,
+count(distinct account_number) as custs,
+sum(offers) as offers,
+sum(rebate) as total_rebate
+--,total_rebate*resp_rate as cost_redemption
+from
+(select priority_custs,cust_category,account_number,type,count(distinct precima_ofb_id) as offers,sum(inc_bound_final) as rebate  
+from offer_incentive_final_allocations_catalina_all_2 
+where mail_opt_in_ind <> 0
+group by 1,2,3,4)
+group by 1,2,3,4
+
+
+
+
+
