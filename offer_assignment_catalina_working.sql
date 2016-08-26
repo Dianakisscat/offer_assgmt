@@ -654,3 +654,120 @@ group by 1,2,3,4
 
 
 
+
+
+/*************************************************/
+/******************QA AND SUMMARIES***************/
+/*************************************************/
+
+
+--QA
+select count(distinct cust_acct_key) from final_offer_assgmt_window_dm1;
+select cust_acct_key, count(*) as cnt from final_offer_assgmt_window_dm1 group by 1 having cnt !=8;
+--cohort
+select cohort,count(distinct cust_acct_key) from final_offer_assgmt_window_dm1 group by 1;
+--account_number and cust_acct_key
+select count(distinct cust_acct_key) from final_offer_assgmt_window_dm1; --2651267
+select count(distinct account_number) from final_offer_assgmt_window_dm1; --2651267
+select cust_acct_key,count(distinct account_number) as cnt from final_offer_assgmt_window_dm1 group by 1 having cnt > 1;
+select account_number,count(distinct cust_acct_key) as cnt from final_offer_assgmt_window_dm1 group by 1 having cnt > 1;
+--check null columns
+select * from final_offer_assgmt_window_dm1 where inc_bound_final is null;
+--check priority groups
+select priority_custs,cust_category,count(distinct cust_acct_key) as cnt from final_offer_assgmt_window_dm1 group by 1,2;
+--priority_custs	cust_category	cnt
+--1					vendor		537390
+--2					sample		306161
+--3					HH			123917
+--4					HM			224676
+--5					HL			157071
+--6					MH			207709
+--7					MM			384427
+--8					ML			262423
+--9					LH			447493
+
+--check different offer types
+select distinct type from final_offer_assgmt_window_dm1;
+select distinct type, priority from final_offer_assgmt_window_dm1;
+select distinct precimaofferid from final_offer_assgmt_window_dm1 where type='product';
+
+--check incentive range and incentive type
+select * from final_offer_assgmt_window_dm1 where incentive_print > incentive_max or incentive_print < incentive_min;
+select * from final_offer_assgmt_window_dm1 where inc_bound_final > inc_max_tmp or incentive_print < inc_min_tmp;
+
+select distinct incentive_type from final_offer_assgmt_window_dm1 where precima_ofb_id in ('MOR-62','MOR-89','MOR-26','MOR-86','MOR-11','MOR-67');
+select distinct incentive_print from final_offer_assgmt_window_dm1 where precima_ofb_id in ('MOR-62','MOR-89','MOR-26','MOR-86','MOR-11','MOR-67');
+
+select distinct incentive_print from final_offer_assgmt_window_dm1;
+
+--cheeck super group rules
+select acct_id,item1,count(*) as cnt from final_offer_assgmt_window_dm1 group by 1,2 having cnt >1;
+select acct_id,precima_ofb_id,count(*) as cnt from final_offer_assgmt_window_dm1 group by 1,2 having cnt >1;
+select acct_id,offer_bank_group_code, count(*) as cnt from final_offer_assgmt_window_dm1 group by 1,2 having cnt >1;
+select acct_id,offer_bank_supergroup_code, count(*) as cnt from final_offer_assgmt_window_dm1 group by 1,2 having cnt >2;
+
+
+--random check
+select *  from final_offer_assgmt_window_dm1 where cust_acct_key =178904 and item1 in ('247','2');
+
+
+--general stats
+
+select priority_custs,cust_category,count(distinct cust_acct_key) from final_offer_assgmt_window_dm1 group by 1,2;
+--priority_custs	cust_category	count
+--1	vendor	537390
+--2	sample	306161
+--3	HH	123917
+--4	HM	224676
+--5	HL	157071
+--6	MH	207709
+--7	MM	384427
+--8	ML	262423
+--9	LH	447493
+
+
+-------------Group Level Rebate Summary
+
+select priority_custs,cust_category,type,
+case when type='vendor' then 0 when type='product' then 0.65 when type='ofb' then 0.65 else 1 end as resp_rate,
+count(distinct account_number) as custs,
+sum(offers) as offers,
+sum(rebate) as total_rebate
+from
+(select priority_custs,cust_category,account_number,type,count(distinct precima_ofb_id) as offers,sum(inc_bound_final) as rebate  
+from offer_incentive_final_allocations_union_all_dy_3_mail_2 
+group by 1,2,3,4)a
+group by 1,2,3,4 order by 1,3;
+
+
+-------------Cust Level Rebate Summary
+
+--vendor
+select cust_acct_key, sum(inc_bound_final) as vendor_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='vendor' group by 1
+--product
+select cust_acct_key, sum(inc_bound_final) as product_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='product' group by 1
+--ofb
+select cust_acct_key, sum(inc_bound_final) as ofb_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='ofb' group by 1
+
+
+--total
+
+drop table ty_rebate_summary_final;
+create table ty_rebate_summary_final as
+select b.priority_custs, b.cust_category, a.* from
+(select a.*,b.vendor_rebate,c.product_rebate,d.ofb_rebate from
+(select cust_acct_key, sum(inc_bound_final) as total_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 group by 1)a
+left join
+(select cust_acct_key, sum(inc_bound_final) as vendor_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='vendor' group by 1)b
+on a.cust_acct_key=b.cust_acct_key
+left join
+(select cust_acct_key, sum(inc_bound_final) as product_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='product' group by 1)c
+on a.cust_acct_key=c.cust_acct_key
+left join
+(select cust_acct_key, sum(inc_bound_final) as ofb_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='ofb' group by 1)d
+on a.cust_acct_key=d.cust_acct_key) a
+left join
+priority_custs_list_dm1_final b
+on a.cust_acct_key=b.cust_acct_key;
+
+Grant list, select on ty_rebate_summary_final to pprcmmrn01_usr_read;

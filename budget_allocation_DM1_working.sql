@@ -268,51 +268,6 @@ select priority_custs,cust_category,cust_acct_key from offer_incentive_final_all
 Grant list, select on priority_custs_list_dm1_final to pprcmmrn01_usr_read;
 
 
--------------Group Level Rebate Summary
-
-select priority_custs,cust_category,type,
-case when type='vendor' then 0 when type='product' then 0.65 when type='ofb' then 0.65 else 1 end as resp_rate,
-count(distinct account_number) as custs,
-sum(offers) as offers,
-sum(rebate) as total_rebate
-from
-(select priority_custs,cust_category,account_number,type,count(distinct precima_ofb_id) as offers,sum(inc_bound_final) as rebate  
-from offer_incentive_final_allocations_union_all_dy_3_mail_2 
-group by 1,2,3,4)a
-group by 1,2,3,4 order by 1,3;
-
-
--------------Cust Level Rebate Summary
-
---vendor
-select cust_acct_key, sum(inc_bound_final) as vendor_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='vendor' group by 1
---product
-select cust_acct_key, sum(inc_bound_final) as product_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='product' group by 1
---ofb
-select cust_acct_key, sum(inc_bound_final) as ofb_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='ofb' group by 1
-
-
---total
-
-drop table ty_rebate_summary_final;
-create table ty_rebate_summary_final as
-select b.priority_custs, b.cust_category, a.* from
-(select a.*,b.vendor_rebate,c.product_rebate,d.ofb_rebate from
-(select cust_acct_key, sum(inc_bound_final) as total_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 group by 1)a
-left join
-(select cust_acct_key, sum(inc_bound_final) as vendor_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='vendor' group by 1)b
-on a.cust_acct_key=b.cust_acct_key
-left join
-(select cust_acct_key, sum(inc_bound_final) as product_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='product' group by 1)c
-on a.cust_acct_key=c.cust_acct_key
-left join
-(select cust_acct_key, sum(inc_bound_final) as ofb_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='ofb' group by 1)d
-on a.cust_acct_key=d.cust_acct_key) a
-left join
-priority_custs_list_dm1_final b
-on a.cust_acct_key=b.cust_acct_key;
-
-Grant list, select on ty_rebate_summary_final to pprcmmrn01_usr_read;
 
 
 
@@ -413,6 +368,9 @@ Grant list, select on qa_final_offer_assgmt_table_dm1 to pprcmmrn01_usr_read;
 
 
 
+/*************************************************/
+/******************QA AND SUMMARIES***************/
+/*************************************************/
 
 
 
@@ -481,3 +439,49 @@ select priority_custs,cust_category,count(distinct cust_acct_key) from final_off
 --8	ML	262423
 --9	LH	447493
 
+
+-------------Group Level Rebate Summary
+
+select priority_custs,cust_category,type,
+case when type='vendor' then 0 when type='product' then 0.65 when type='ofb' then 0.65 else 1 end as resp_rate,
+count(distinct account_number) as custs,
+sum(offers) as offers,
+sum(rebate) as total_rebate
+from
+(select priority_custs,cust_category,account_number,type,count(distinct precima_ofb_id) as offers,sum(inc_bound_final) as rebate  
+from offer_incentive_final_allocations_union_all_dy_3_mail_2 
+group by 1,2,3,4)a
+group by 1,2,3,4 order by 1,3;
+
+
+-------------Cust Level Rebate Summary
+
+--vendor
+select cust_acct_key, sum(inc_bound_final) as vendor_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='vendor' group by 1
+--product
+select cust_acct_key, sum(inc_bound_final) as product_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='product' group by 1
+--ofb
+select cust_acct_key, sum(inc_bound_final) as ofb_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='ofb' group by 1
+
+
+--total
+
+drop table ty_rebate_summary_final;
+create table ty_rebate_summary_final as
+select b.priority_custs, b.cust_category, a.* from
+(select a.*,b.vendor_rebate,c.product_rebate,d.ofb_rebate from
+(select cust_acct_key, sum(inc_bound_final) as total_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 group by 1)a
+left join
+(select cust_acct_key, sum(inc_bound_final) as vendor_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='vendor' group by 1)b
+on a.cust_acct_key=b.cust_acct_key
+left join
+(select cust_acct_key, sum(inc_bound_final) as product_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='product' group by 1)c
+on a.cust_acct_key=c.cust_acct_key
+left join
+(select cust_acct_key, sum(inc_bound_final) as ofb_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='ofb' group by 1)d
+on a.cust_acct_key=d.cust_acct_key) a
+left join
+priority_custs_list_dm1_final b
+on a.cust_acct_key=b.cust_acct_key;
+
+Grant list, select on ty_rebate_summary_final to pprcmmrn01_usr_read;
