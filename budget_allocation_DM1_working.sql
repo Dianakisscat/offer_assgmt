@@ -270,15 +270,6 @@ Grant list, select on priority_custs_list_dm1_final to pprcmmrn01_usr_read;
 
 
 
-
-
-
-
-
-
-
-
-
 /*************************************************/
 /*************  Final assignment decisions********/
 /*************************************************/
@@ -347,14 +338,73 @@ when window=1 then '11/20/2016'
 when window=2 then '12/11/2016'
 when window=3 then '1/1/2017' end as BARCODE_END_DATE
 from vendor_cnt where cust_acct_key in (select cust_acct_key from qa_final_offer_assgmt_table_dm1);
- --(select cust_acct_key from mrsn_sbo_assignment_2016Xmas_neox where basket_offer_type!='non-collector');
+--(select cust_acct_key from mrsn_sbo_assignment_2016Xmas_neox where basket_offer_type!='non-collector');
 --since neo is doing new table ... use a temporary table 
 
 
+Grant list, select on final_offer_assgmt_window_dm1 to pprcmmrn01_usr_read;
+
+
+
+/*************************************************/
+/**************DELETE WRONG OFFERS****************/
+/*************************************************/
+
+
+------------Correct prod_hierarchky_key under those suspicious offer banks
+drop table dy_check_ofb_keys;
+create table dy_check_ofb_keys as
+select * from dy_offer_bank_revised where precima_ofb_id in (select precima_ofb_id from dy_wrong_offer_banks_v2);
+
+------------Check offer pool
+drop table check_acct_ofb_purch;  --737,617 customers purchased from these suspicious offer banks
+create temp table check_acct_ofb_purch as
+select a.acct_id, a.precima_ofb_id, b.prod_hierarchy_key 
+from final_offer_assgmt_window_dm1 a,  dy_check_ofb_keys b
+where a.precima_ofb_id=b.precima_ofb_id group by 1,2,3;
+
+------------check if they purchased any of the correct prod_hier_keys
+drop table acct_ofb_cust_tlog;
+create temp table acct_ofb_cust_tlog as 
+select  a.acct_id, a.tran_id,a.tran_dt
+from :cust_tlog_table a, check_acct_ofb_purch b           --pull cust tlog hist, get tran_id
+where a.tran_dt between :strt_dt and :end_dt
+and a.acct_id=b.acct_id group by 1,2,3;
+
+drop table acct_ofb_tlog;
+create temp table acct_ofb_tlog as 
+select a.*, b.prod_id, sum(b.sale_amt) as sale_amt        --pull tlog hist, get prod_id
+from acct_ofb_cust_tlog a, :tlog_table b
+where a.tran_dt between :strt_dt and :end_dt
+and a.tran_id=b.tran_id group by 1,2,3,4;
+
+
+drop table acct_ofb_prod_hier;                            --get prod_hier_key
+create temp table acct_ofb_prod_hier as    
+select a.*, b.prod_hier_id_lvl3||'-'||b.prod_hier_id_lvl2||'-'||b.prod_hier_id_lvl1 as prod_hierarchy_key,1 as purch_flag 
+from acct_ofb_tlog a,:product_table b 
+where a.prod_id=b.prod_id;
+
+
+drop table acct_ofb_check_purch;                          
+create temp table acct_ofb_check_purch as
+select a.*, b.precima_ofb_id
+from acct_ofb_prod_hier a, dy_check_ofb_keys b, final_offer_assgmt_window_dm1 c
+where a.prod_hierarchy_key=b.prod_hierarchy_key                  --filter, keep correct prod_hier_keys in our check list
+and a.acct_id=c.acct_id and b.precima_ofb_id=c.precima_ofb_id;   --filter, make sure customers are assigned offer for a certain category
+
+select count(distinct acct_id) from acct_ofb_check_purch; --610,165 customers actually purchased from the cagetory that they are assigned an offer
+
+
+
+--Delete those assigned wrong offers 
+delete from final_offer_assgmt_window_dm1 where acct_id in 
+	(select acct_id from check_acct_ofb_purch except select acct_id from acct_ofb_check_purch);
+
+
+Grant list, select on qa_final_offer_assgmt_table_dm1 to pprcmmrn01_usr_read;
 
 --This Files Handed Over to Queenie for Fresh QA
-
-
 drop table qa_final_offer_assgmt_table_dm1;
 create table qa_final_offer_assgmt_table_dm1 as 
 select 
@@ -365,6 +415,11 @@ from final_offer_assgmt_window_dm1
 ;
 
 Grant list, select on qa_final_offer_assgmt_table_dm1 to pprcmmrn01_usr_read;
+
+--TREATMENT GROUPS
+
+
+
 
 
 
@@ -457,11 +512,11 @@ group by 1,2,3,4 order by 1,3;
 -------------Cust Level Rebate Summary
 
 --vendor
-select cust_acct_key, sum(inc_bound_final) as vendor_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='vendor' group by 1
+select cust_acct_key, sum(inc_bound_final) as vendor_rebate from final_offer_assgmt_window_dm1 where type='vendor' group by 1
 --product
-select cust_acct_key, sum(inc_bound_final) as product_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='product' group by 1
+select cust_acct_key, sum(inc_bound_final) as product_rebate from final_offer_assgmt_window_dm1 where type='product' group by 1
 --ofb
-select cust_acct_key, sum(inc_bound_final) as ofb_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='ofb' group by 1
+select cust_acct_key, sum(inc_bound_final) as ofb_rebate from final_offer_assgmt_window_dm1 where type='ofb' group by 1
 
 
 --total
@@ -470,15 +525,15 @@ drop table ty_rebate_summary_final;
 create table ty_rebate_summary_final as
 select b.priority_custs, b.cust_category, a.* from
 (select a.*,b.vendor_rebate,c.product_rebate,d.ofb_rebate from
-(select cust_acct_key, sum(inc_bound_final) as total_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 group by 1)a
+(select cust_acct_key, sum(inc_bound_final) as total_rebate from final_offer_assgmt_window_dm1 group by 1)a
 left join
-(select cust_acct_key, sum(inc_bound_final) as vendor_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='vendor' group by 1)b
+(select cust_acct_key, sum(inc_bound_final) as vendor_rebate from final_offer_assgmt_window_dm1 where type='vendor' group by 1)b
 on a.cust_acct_key=b.cust_acct_key
 left join
-(select cust_acct_key, sum(inc_bound_final) as product_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='product' group by 1)c
+(select cust_acct_key, sum(inc_bound_final) as product_rebate from final_offer_assgmt_window_dm1 where type='product' group by 1)c
 on a.cust_acct_key=c.cust_acct_key
 left join
-(select cust_acct_key, sum(inc_bound_final) as ofb_rebate from offer_incentive_final_allocations_union_all_dy_3_mail_2 where type='ofb' group by 1)d
+(select cust_acct_key, sum(inc_bound_final) as ofb_rebate from final_offer_assgmt_window_dm1 where type='ofb' group by 1)d
 on a.cust_acct_key=d.cust_acct_key) a
 left join
 priority_custs_list_dm1_final b
