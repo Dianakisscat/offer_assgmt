@@ -337,8 +337,10 @@ case
 when window=1 then '11/20/2016'
 when window=2 then '12/11/2016'
 when window=3 then '1/1/2017' end as BARCODE_END_DATE
-from vendor_cnt where cust_acct_key in (select cust_acct_key from qa_final_offer_assgmt_table_dm1);
---(select cust_acct_key from mrsn_sbo_assignment_2016Xmas_neox where basket_offer_type!='non-collector');
+from vendor_cnt where cust_acct_key in 
+(select cust_acct_key from mrsn_sbo_assignment_2016Xmas_50_neox where basket_offer_type!='non-collector');
+--(select cust_acct_key from qa_final_offer_assgmt_table_dm1);
+--;
 --since neo is doing new table ... use a temporary table 
 
 
@@ -396,30 +398,93 @@ and a.acct_id=c.acct_id and b.precima_ofb_id=c.precima_ofb_id;   --filter, make 
 select count(distinct acct_id) from acct_ofb_check_purch; --610,165 customers actually purchased from the cagetory that they are assigned an offer
 
 
+drop table delete_custs;
+create table delete_custs as
+select distinct cust_acct_key from vendor_cnt where cust_acct_key in (select cust_acct_key from mrsn_sbo_assignment_2016Xmas_50_neox where basket_offer_type!='non-collector')  --2010481
+except
+select distinct cust_acct_key from final_offer_assgmt_window_dm1;
+
 
 --Delete those assigned wrong offers 
 delete from final_offer_assgmt_window_dm1 where acct_id in 
 	(select acct_id from check_acct_ofb_purch except select acct_id from acct_ofb_check_purch);
 
-
-Grant list, select on qa_final_offer_assgmt_table_dm1 to pprcmmrn01_usr_read;
-
---This Files Handed Over to Queenie for Fresh QA
-drop table qa_final_offer_assgmt_table_dm1;
-create table qa_final_offer_assgmt_table_dm1 as 
-select 
-priority_custs,cust_category,cust_acct_key,acct_id,type,precimavendorid,precimaofferid,
-precima_ofb_id,offer_bank_group_code,offer_bank_supergroup_code,
-window,channel,incentive_print,incentive_type
-from final_offer_assgmt_window_dm1
-;
-
-Grant list, select on qa_final_offer_assgmt_table_dm1 to pprcmmrn01_usr_read;
+Grant list, select on final_offer_assgmt_table_dm1 to pprcmmrn01_usr_read;
 
 --TREATMENT GROUPS
+drop table final_offer_assgmt_window_dm1_treatment;
+create table  final_offer_assgmt_window_dm1_treatment as
+select * from final_offer_assgmt_window_dm1 where cust_acct_key in (select cust_acct_key from msn_test_control_DM1 where tc_flag='T'--tc_test_result
+Grant list, select on final_offer_assgmt_window_dm1_treatment to pprcmmrn01_usr_read;
+
+/*******************************************************/
+/******************Check Wrong Offer Again**************/
+/*******************************************************/
+
+------------Correct prod_hierarchky_key under those suspicious offer banks
+create table dy_check_ofb_keys_v2 as
+select * from :offer_bank_table a, ella_wrong_keys b
+--select * from dy_offer_bank_revised a, ella_wrong_keys b
+where a.precima_ofb_id=b.pma_offer_code and promoted_flag!='N';
 
 
+------------Check offer pool
+drop table check_acct_ofb_purch;  -- customers purchased from these suspicious offer banks
+create temp table check_acct_ofb_purch as
+select a.acct_id, a.precima_ofb_id 
+from final_offer_assgmt_window_dm1_treatment a,  dy_check_ofb_keys_v2 b
+where a.precima_ofb_id=b.precima_ofb_id group by 1,2;
 
+------------check if they purchased any of the correct prod_hier_keys
+drop table acct_ofb_cust_tlog;
+create temp table acct_ofb_cust_tlog as 
+select  a.acct_id, a.tran_id,a.tran_dt
+from :cust_tlog_table a, check_acct_ofb_purch b           --pull cust tlog hist, get tran_id
+where a.tran_dt between :strt_dt and :end_dt
+and a.acct_id=b.acct_id group by 1,2,3;
+
+drop table acct_ofb_tlog;
+create temp table acct_ofb_tlog as 
+select a.*, b.prod_id, sum(b.sale_amt) as sale_amt        --pull tlog hist, get prod_id
+from acct_ofb_cust_tlog a, :tlog_table b
+where a.tran_dt between :strt_dt and :end_dt
+and a.tran_id=b.tran_id group by 1,2,3,4;
+
+
+drop table acct_ofb_prod_hier;                            --get prod_hier_key
+create temp table acct_ofb_prod_hier as    
+select a.*, b.prod_hier_id_lvl3||'-'||b.prod_hier_id_lvl2||'-'||b.prod_hier_id_lvl1 as prod_hierarchy_key,1 as purch_flag 
+from acct_ofb_tlog a,:product_table b 
+where a.prod_id=b.prod_id;
+
+
+drop table acct_ofb_check_purch;                          
+create temp table acct_ofb_check_purch as
+select a.*, b.precima_ofb_id
+from acct_ofb_prod_hier a, dy_check_ofb_keys_v2 b, final_offer_assgmt_window_dm1_treatment c
+where a.prod_hierarchy_key=b.prod_hierarchy_key                  --filter, keep correct prod_hier_keys in our check list
+and a.acct_id=c.acct_id and b.precima_ofb_id=c.precima_ofb_id;   --filter, make sure customers are assigned offer for a certain category
+
+create table delete_custs_v2 as
+select distinct cust_acct_key
+from final_offer_assgmt_window_dm1_treatment where acct_id in 
+	(select acct_id from(
+	(select acct_id,precima_ofb_id from check_acct_ofb_purch      --assumed purchased from offer assignment table
+		except 
+	 select acct_id,precima_ofb_id from acct_ofb_check_purch))a ) --actually purchased
+	;    
+
+
+Grant list, select on delete_custs_v2 to pprcmmrn01_usr_read;
+
+
+--Delete those assigned wrong offers 
+delete from final_offer_assgmt_window_dm1_treatment where acct_id in 
+	(select acct_id from(
+	(select acct_id,precima_ofb_id from check_acct_ofb_purch      --assumed purchased from offer assignment table
+		except 
+	 select acct_id,precima_ofb_id from acct_ofb_check_purch))a ) --actually purchased
+	;    
 
 
 
@@ -525,15 +590,15 @@ drop table ty_rebate_summary_final;
 create table ty_rebate_summary_final as
 select b.priority_custs, b.cust_category, a.* from
 (select a.*,b.vendor_rebate,c.product_rebate,d.ofb_rebate from
-(select cust_acct_key, sum(inc_bound_final) as total_rebate from final_offer_assgmt_window_dm1 group by 1)a
+(select cust_acct_key, sum(inc_bound_final) as total_rebate from final_offer_assgmt_window_dm1_treatment group by 1)a
 left join
-(select cust_acct_key, sum(inc_bound_final) as vendor_rebate from final_offer_assgmt_window_dm1 where type='vendor' group by 1)b
+(select cust_acct_key, sum(inc_bound_final) as vendor_rebate from final_offer_assgmt_window_dm1_treatment where type='vendor' group by 1)b
 on a.cust_acct_key=b.cust_acct_key
 left join
-(select cust_acct_key, sum(inc_bound_final) as product_rebate from final_offer_assgmt_window_dm1 where type='product' group by 1)c
+(select cust_acct_key, sum(inc_bound_final) as product_rebate from final_offer_assgmt_window_dm1_treatment where type='product' group by 1)c
 on a.cust_acct_key=c.cust_acct_key
 left join
-(select cust_acct_key, sum(inc_bound_final) as ofb_rebate from final_offer_assgmt_window_dm1 where type='ofb' group by 1)d
+(select cust_acct_key, sum(inc_bound_final) as ofb_rebate from final_offer_assgmt_window_dm1_treatment where type='ofb' group by 1)d
 on a.cust_acct_key=d.cust_acct_key) a
 left join
 priority_custs_list_dm1_final b
