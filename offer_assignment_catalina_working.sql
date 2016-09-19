@@ -779,7 +779,7 @@ create table final_offer_assgmt_freq_catalina as
 	final_offer_assgmt_table_catalina_period a,
 	DM1_cust_shop_freq b
 	where a.acct_id=b.acct_id 
-	and a.cust_acct_key in (select cust_acct_key from	mrsn_sbo_assignment_2016Xmas_50_neox);
+	and a.cust_acct_key in (select cust_acct_key from mrsn_sbo_assignment_2016Xmas_50_neox);
 
 delete from final_offer_assgmt_freq_catalina
 where cust_acct_key in (select cust_acct_key from final_offer_assgmt_freq_catalina 
