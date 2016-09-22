@@ -101,28 +101,31 @@ where super_rank <= 4;
 
 /*
 \echo
-\echo 'delete those violating 50% rule'
+\echo 'select the first 8 offers from all potential offers'
 \echo
 */
+drop table shelf_super3_:cohort:user;
+create temp table shelf_super3_:cohort:user as 
+select * from 
+(select *, count(*)over(partition by acct_id) as total_temp from shelf_super2_:cohort:user)a 
+where total_temp <= 8;   							--if we can successfully select 8 from all, then they must not violate the 50% rule
 
 
-drop table shelf_super3_:cohort:user; 
-create table shelf_super3_:cohort:user as
+drop table shelf_super4_:cohort:user; 
+create table shelf_super4_:cohort:user as
 select cust_acct_key, account_id, acct_id,item1,v10,rank,item,precima_ofb_id,offer_bank_group_code,offer_bank_supergroup_code,precimavendorid,precimaofferid from 
 (select *, row_number()over(partition by acct_id, offer_bank_supergroup_code order by v10 desc) as super_rank 
-from 
-(select *, count(*)over(partition by acct_id) as total_temp from shelf_super2_:cohort:user)a   							--get total # of offers
-)a
-where super_rank <= total_temp*0.5;																						--offers within a super group must be fewer than 0.5 * total
+	from shelf_super3_:cohort:user )a 				--if 3-7 offers are selected, we have to check again if they violate the 50% rule
+where super_rank <= total_temp*0.5;					--offers within a super group must be fewer than 0.5 * total
 
 
 --customers with fewer than 3 offers are not qualified
 
 drop table shelf_offer_final_:cohort:user;
 create table shelf_offer_final_:cohort:user as
-select * from shelf_super3_:cohort:user
+select * from shelf_super4_:cohort:user
 where acct_id not in 
-	(select acct_id from (select acct_id, count(*) as offer_cnt from shelf_super3_:cohort:user group by 1 having offer_cnt < 3)a)
+	(select acct_id from (select acct_id, count(*) as offer_cnt from shelf_super4_:cohort:user group by 1 having offer_cnt < 3)a)
 distribute on (acct_id, item1)
 	;
 

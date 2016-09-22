@@ -34,9 +34,33 @@ nzsql -host 10.231.146.160 -port 5480 -d pprcmmrn01 -u $user -pw $pass \
 -v product_table=$product_table \
 -f shelf_offer_assignment_part1.sql > shelf_offer_assignment_part1_$cohort.log 2>&1
 
+j=0
+i=1
+threshold=1
+
+while [ $threshold -gt 0 ]
+do
+
+#iterations here
+nzsql -host 10.231.146.160 -port 5480 -d pprcmmrn01 -u $user -pw $pass -v i=$i -v j=$j -f shelf_offer_assignment_part2.sql > shelf_offer_assignment_part2_$cohort.log 2>&1
+
+threshold=`/usr/nps/kit/bin/nzsql -host 10.231.146.160 -port 5480 -d pprcmmrn01 -u dyang -pw 'Aug2016_diana' -t -c "select count(*) from (select *, row_number()over(partition by acct_id, offer_bank_supergroup_code order by v10 desc) as super_rank from (select *, count(*)over(partition by acct_id) as total_temp from shelf_iteration_$i)a )a where super_rank > total_temp*0.5;"`  
+
+
+i=$((i+1))
+j=$((j+1))
+
+done
+
+echo Iternations needed is $j
+#where to put it?
+nzsql -host 10.231.146.160 -port 5480 -d pprcmmrn01 -u $user -pw $pass -v i=$i -v j=$j -v user=$user -v cohort=$cohort -f shelf_offer_assignment_part3.sql > shelf_offer_assignment_part3_$cohort.log 2>&1
+
 
 cohort=$((cohort+1))
 done
+
+
 
 
 
